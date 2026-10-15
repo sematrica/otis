@@ -74,6 +74,8 @@ jobs:
         run: uv sync --project engine --extra dev --python 3.12
       - name: Engine unit tests
         run: uv run --project engine pytest engine/tests -m "not model" -q
+      - name: Build Swift package
+        run: swift build --package-path app
       - name: Report Metal / MLX availability
         run: |
           uv run --project engine python -c "import mlx.core as mx; print('metal available:', mx.metal.is_available()); print('default device:', mx.default_device())" || true
@@ -95,8 +97,6 @@ jobs:
           VERBATIM_TEST_MLX_MODEL_DIR: ${{ runner.temp }}/vdata/models/mlx/small
           VERBATIM_TEST_REPORT: ${{ runner.temp }}/accuracy-macos.json
         run: uv run --project engine pytest engine/tests -m model -q -s -rs
-      - name: Build Swift package
-        run: swift build --package-path app
       - name: Swift tests (fixtures + real engine + real transcription)
         env:
           VERBATIM_ENGINE_PYTHON: ${{ github.workspace }}/engine/.venv/bin/python

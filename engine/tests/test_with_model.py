@@ -20,8 +20,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from verbatim_engine.asr.base import DecodeOptions, LoadOptions
+from verbatim_engine.asr.base import DecodeOptions, LoadOptions, TranscriptionResult
 from verbatim_engine.asr.faster_whisper_backend import FasterWhisperBackend
+from verbatim_engine.asr.merge import normalize_token
 from verbatim_engine.metrics.wer import normalize, word_error_rate
 from verbatim_engine.paths import EnginePaths
 from verbatim_engine.rpc.service import EngineService
@@ -45,12 +46,26 @@ def _write_report():
         Path(target).write_text(json.dumps(existing, indent=2))
 
 
+def error_breakdown(reference: str, hypothesis: str) -> list[tuple[str, str, str]]:
+    """Word-level differences, e.g. ("replace", "several", "all")."""
+    import difflib
+
+    a, b = normalize(reference).split(), normalize(hypothesis).split()
+    return [
+        (tag, " ".join(a[i1:i2]), " ".join(b[j1:j2]))
+        for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, a, b, autojunk=False).get_opcodes()
+        if tag != "equal"
+    ]
+
+
 def record(name: str, reference: str, hypothesis: str, **extra) -> float:
     wer = word_error_rate(reference, hypothesis)
     REPORT[name] = {"wer": round(wer.rate, 4), "errors": wer.errors, "reference_words": wer.reference_length,
                     "substitutions": wer.substitutions, "deletions": wer.deletions, "insertions": wer.insertions,
                     "hypothesis": hypothesis, "model": os.environ.get("VERBATIM_TEST_MODEL_DIR"), **extra}
-    print(f"{name}: WER {wer.rate:.3f} ({wer.errors}/{wer.reference_length})")
+    diffs = error_breakdown(reference, hypothesis)
+    REPORT[name]["differences"] = diffs
+    print(f"{name}: WER {wer.rate:.3f} ({wer.errors}/{wer.reference_length}) {diffs if diffs else ''}")
     return wer.rate
 
 
@@ -102,13 +117,30 @@ def build_long_recording(tmp_path: Path, sentences: list[str], pause: float = 1.
     return path, " ".join(sentences)
 
 
-def assert_each_sentence_once(text: str, sentences: list[str]) -> None:
-    """Every sentence's opening words appear exactly once: catches words lost
-    or duplicated at chunk boundaries (sentences start right after pauses)."""
+def assert_merge_is_lossless(service: EngineService, job_id: str, project_id: str) -> None:
+    """Merging must neither lose nor duplicate recognised words. At cuts placed
+    in pauses the chunks never heard the same speech, so the transcript must be
+    exactly the concatenation of every chunk's raw words. This checks the
+    pipeline independently of the model's recognition errors (measured by WER)."""
+    chunks = repo.load_chunks(service.db, job_id)
+    assert all(not c.cut_in_speech for c, _ in chunks), "expected every cut to fall in a pause"
+    raw = []
+    for _chunk, row in chunks:
+        result = TranscriptionResult.from_dict(json.loads(row["result_json"]))
+        raw += [normalize_token(w.text) for seg in result.segments for w in seg.words or []]
+    merged = [
+        normalize_token(w["text"])
+        for seg in repo.get_transcript(service.db, project_id, include_words=True)["segments"]
+        for w in seg["words"]
+    ]
+    assert [t for t in merged if t] == [t for t in raw if t]
+
+
+def assert_no_sentence_duplicated(text: str, sentences: list[str]) -> None:
     normalized = normalize(text)
     for sentence in sentences:
         key = " ".join(normalize(sentence).split()[:4])
-        assert normalized.count(key) == 1, key
+        assert normalized.count(key) <= 1, f"duplicated: {key}"
 
 
 # ----------------------------------------------------------------------------- backend
@@ -194,7 +226,8 @@ def test_long_recording_chunked_at_pauses(service, fw_model_dir, texts, tmp_path
     text = transcript_text(service, project["id"])
     wer = record("tts_long_chunked", reference, text, chunks=len(chunks), duration=round(duration, 1))
     assert wer <= 0.20
-    assert_each_sentence_once(text, texts["english_paragraphs"])
+    assert_no_sentence_duplicated(text, texts["english_paragraphs"])
+    assert_merge_is_lossless(service, job["id"], project["id"])
     segments = repo.get_transcript(service.db, project["id"])["segments"]
     assert all(a["start"] <= b["start"] for a, b in zip(segments, segments[1:]))
     assert segments[-1]["end"] <= duration + 0.5
@@ -269,8 +302,9 @@ def test_cancel_then_resume_reuses_completed_chunks(service, fw_model_dir, texts
     extract = next(s for s in resumed["stages"] if s["stage"] == "extract")
     assert extract["detail"] and "Reused" in extract["detail"]
     text = transcript_text(service, project["id"])
-    record("tts_cancel_resume", reference, text, chunks=total)
-    assert_each_sentence_once(text, texts["english_paragraphs"])
+    assert record("tts_cancel_resume", reference, text, chunks=total) <= 0.20
+    assert_no_sentence_duplicated(text, texts["english_paragraphs"])
+    assert_merge_is_lossless(service, job["id"], project["id"])
 
 
 def test_interrupted_job_recovers_after_restart(fw_model_dir, texts, data_dir, tmp_path):
