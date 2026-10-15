@@ -48,13 +48,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        if isTerminating { return .terminateNow }
+        if isTerminating { return .terminateNow }  // a second quit request: don't wait again
         isTerminating = true
         // Let the engine stop cleanly: a running job becomes "interrupted" and
-        // can be resumed on the next launch.
-        Task {
-            await model.shutdown()
-            NSApp.reply(toApplicationShouldTerminate: true)
+        // can be resumed on the next launch. While AppKit waits for the reply it
+        // runs a nested run loop that cannot drain the main queue if terminate
+        // was itself called from main-queue work, so neither the shutdown nor
+        // the reply may depend on the main actor.
+        let client = model.prepareForTermination()
+        Task.detached {
+            await client.stop()
+            RunLoop.main.perform(inModes: [.common]) {
+                MainActor.assumeIsolated { NSApp.reply(toApplicationShouldTerminate: true) }
+            }
         }
         return .terminateLater
     }

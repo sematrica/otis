@@ -100,6 +100,14 @@ final class AppModel: ObservableObject {
         await client.stop()
     }
 
+    /// Stops reacting to engine events and hands back the client so the caller
+    /// can stop it without involving the main actor (see AppDelegate).
+    func prepareForTermination() -> EngineClient {
+        notificationTask?.cancel()
+        notificationTask = nil
+        return client
+    }
+
     private func listenForNotifications() {
         notificationTask?.cancel()
         let stream = client.notifications
