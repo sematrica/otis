@@ -1,0 +1,121 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  UV_FROZEN: "1"
+
+jobs:
+  engine-linux:
+    name: Engine (Linux, real Whisper Small)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.8.22"
+      - name: Install speech synthesizer for test fixtures
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq espeak-ng ffmpeg
+      - name: Sync engine environment
+        run: uv sync --project engine --extra dev --python 3.12
+      - name: Unit, media, storage and RPC tests
+        run: uv run --project engine pytest engine/tests -m "not model" -q
+      - name: Verify model catalog against HuggingFace
+        run: uv run --project engine python scripts/verify_model_catalog.py
+      - name: Cache downloaded models
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/vdata/models
+          key: models-linux-${{ hashFiles('engine/src/verbatim_engine/models/catalog.py') }}
+      - name: Download Whisper Small through the engine's own download path
+        run: |
+          test -f "$RUNNER_TEMP/vdata/models/faster-whisper/small/verbatim-model.json" \
+            || uv run --project engine verbatim-engine download-model faster-whisper/small --data-dir "$RUNNER_TEMP/vdata"
+      - name: Real-model end-to-end tests
+        env:
+          VERBATIM_TEST_MODEL_DIR: ${{ runner.temp }}/vdata/models/faster-whisper/small
+          VERBATIM_TEST_REPORT: ${{ runner.temp }}/accuracy-linux.json
+        run: uv run --project engine pytest engine/tests -m model -q -s
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: accuracy-linux
+          path: ${{ runner.temp }}/accuracy-linux.json
+          if-no-files-found: ignore
+
+  macos:
+    name: macOS (Apple Silicon) build, tests and app bundle
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.8.22"
+      - name: Toolchain
+        run: |
+          sw_vers
+          xcodebuild -version
+          swift --version
+          sysctl -n machdep.cpu.brand_string hw.memsize hw.perflevel0.physicalcpu || true
+      - name: Sync engine environment
+        run: uv sync --project engine --extra dev --python 3.12
+      - name: Engine unit tests
+        run: uv run --project engine pytest engine/tests -m "not model" -q
+      - name: Report Metal / MLX availability
+        run: |
+          uv run --project engine python -c "import mlx.core as mx; print('metal available:', mx.metal.is_available()); print('default device:', mx.default_device())" || true
+          uv run --project engine verbatim-engine info | head -60
+      - name: Cache downloaded models
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/vdata/models
+          key: models-macos-${{ hashFiles('engine/src/verbatim_engine/models/catalog.py') }}
+      - name: Download Whisper Small (faster-whisper and MLX) through the engine
+        run: |
+          for model in faster-whisper/small mlx/small; do
+            test -f "$RUNNER_TEMP/vdata/models/$model/verbatim-model.json" \
+              || uv run --project engine verbatim-engine download-model "$model" --data-dir "$RUNNER_TEMP/vdata"
+          done
+      - name: Engine real-model tests (faster-whisper and MLX)
+        env:
+          VERBATIM_TEST_MODEL_DIR: ${{ runner.temp }}/vdata/models/faster-whisper/small
+          VERBATIM_TEST_MLX_MODEL_DIR: ${{ runner.temp }}/vdata/models/mlx/small
+          VERBATIM_TEST_REPORT: ${{ runner.temp }}/accuracy-macos.json
+        run: uv run --project engine pytest engine/tests -m model -q -s -rs
+      - name: Build Swift package
+        run: swift build --package-path app
+      - name: Swift tests (fixtures + real engine + real transcription)
+        env:
+          VERBATIM_ENGINE_PYTHON: ${{ github.workspace }}/engine/.venv/bin/python
+          VERBATIM_TEST_MODEL_DIR: ${{ runner.temp }}/vdata/models/faster-whisper/small
+        run: swift test --package-path app
+      - name: Build Verbatim.app
+        run: scripts/build_app.sh
+      - name: Smoke-test the app bundle
+        run: scripts/smoke_test_app.sh build/Verbatim.app
+      - name: Package artifact
+        run: ditto -c -k --keepParent build/Verbatim.app build/Verbatim.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Verbatim-app-unsigned
+          path: build/Verbatim.zip
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: accuracy-macos
+          path: ${{ runner.temp }}/accuracy-macos.json
+          if-no-files-found: ignore

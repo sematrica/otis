@@ -286,3 +286,60 @@ def test_source_change_is_detected(service, fw_model_dir, jfk_path, tmp_path):
     job = service.jobs_start({"project_id": project["id"], "options": options_for(fw_model_dir)})
     job = wait_job(service, job["id"])
     assert job["status"] == "failed" and job["error"]["code"] == "source_changed"
+
+
+# ----------------------------------------------------------------------------- MLX (Apple Silicon only)
+
+
+@pytest.fixture(scope="module")
+def mlx_backend(mlx_model_dir):
+    from verbatim_engine.asr.mlx_whisper_backend import MlxWhisperBackend
+    from verbatim_engine.errors import BackendUnavailable
+
+    available, reason = MlxWhisperBackend.availability()
+    if not available:
+        pytest.skip(reason)
+    backend = MlxWhisperBackend()
+    try:
+        backend.load(mlx_model_dir, LoadOptions())
+    except BackendUnavailable as exc:
+        pytest.skip(exc.message)
+    yield backend
+    backend.close()
+
+
+def test_mlx_backend_transcribes_real_speech(mlx_backend, jfk_path, corpus):
+    fractions = []
+    result, effective = mlx_backend.transcribe(read_wav(jfk_path), DecodeOptions(beam_size=1), fractions.append)
+    text = " ".join(s.text.strip() for s in result.segments)
+    assert record("jfk_mlx_backend", corpus["samples"][0]["reference"], text, backend="mlx",
+                  model=os.environ.get("VERBATIM_TEST_MLX_MODEL_DIR")) <= 0.10
+    assert result.language == "en" and result.language_probability > 0.5
+    assert effective["beam_size"] == 1 and "greedy" in effective["beam_search"]
+    words = [w for s in result.segments for w in s.words]
+    assert words and all(0.0 <= w.start <= w.end <= 11.0 + 1e-3 for w in words)
+    assert fractions and fractions[-1] == 1.0
+
+
+def test_mlx_silence_produces_no_text(mlx_backend):
+    rng = np.random.default_rng(2)
+    result, _ = mlx_backend.transcribe(rng.normal(0, 0.001, 20 * SR).astype(np.float32), DecodeOptions(beam_size=1))
+    assert result.segments == []
+
+
+def test_mlx_pipeline_end_to_end(service, mlx_model_dir, jfk_path, corpus):
+    from verbatim_engine.asr.mlx_whisper_backend import MlxWhisperBackend
+
+    available, reason = MlxWhisperBackend.availability()
+    if not available:
+        pytest.skip(reason)
+    project = service.projects_create({"path": str(jfk_path)})
+    job = service.jobs_start({"project_id": project["id"],
+                              "options": {"backend": "mlx", "model_path": str(mlx_model_dir), "mode": "maximum"}})
+    job = wait_job(service, job["id"])
+    if job["status"] == "failed" and job["error"]["code"] == "backend_unavailable":
+        pytest.skip(job["error"]["message"])
+    assert job["status"] == "completed", job["error"]
+    assert job["effective"]["decode"]["beam_size"] == 1
+    assert any("Beam search is not supported" in w for w in job["effective"]["warnings"])
+    record("jfk_mlx_pipeline", corpus["samples"][0]["reference"], transcript_text(service, project["id"]), backend="mlx")
