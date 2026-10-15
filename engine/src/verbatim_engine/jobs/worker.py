@@ -68,6 +68,10 @@ class Worker:
         self.db = Database(paths.db_path)
         self.models = ModelManager(self.db, paths)
         self.orphaned = False
+        #: Set by signal handlers: "cancelled" or "interrupted". Any exception
+        #: raised after a stop request is classified by it, because the signal
+        #: can surface inside library code as a different exception type.
+        self.stop_reason: str | None = None
         self._last_progress = 0.0
         self._last_cancel_poll = 0.0
 
@@ -110,17 +114,21 @@ class Worker:
             self._changed(status="cancelled")
             return EXIT_CANCELLED
         except _Interrupted:
-            repo.finish_job(
-                self.db, self.job_id, "interrupted", error_code="interrupted",
-                error_message="Processing stopped because the app quit. Resume to continue.",
-            )
-            return EXIT_INTERRUPTED
-        except EngineError as exc:
-            log.warning("job %s failed: %s", self.job_id, exc.message)
-            repo.finish_job(self.db, self.job_id, "failed", error_code=exc.code, error_message=exc.message)
-            self._changed(status="failed")
-            return EXIT_FAILED
-        except Exception as exc:  # noqa: BLE001 - report anything unexpected
+            return self._finish_interrupted()
+        except BaseException as exc:
+            if self.stop_reason == "interrupted":
+                return self._finish_interrupted()
+            if self.stop_reason == "cancelled":
+                repo.finish_job(self.db, self.job_id, "cancelled", error_code="cancelled", error_message="The job was cancelled.")
+                self._changed(status="cancelled")
+                return EXIT_CANCELLED
+            if isinstance(exc, EngineError):
+                log.warning("job %s failed: %s", self.job_id, exc.message)
+                repo.finish_job(self.db, self.job_id, "failed", error_code=exc.code, error_message=exc.message)
+                self._changed(status="failed")
+                return EXIT_FAILED
+            if not isinstance(exc, Exception):
+                raise
             log.exception("job %s crashed", self.job_id)
             repo.finish_job(
                 self.db, self.job_id, "failed", error_code="internal_error",
@@ -131,6 +139,13 @@ class Worker:
         repo.finish_job(self.db, self.job_id, "completed")
         self._changed(status="completed")
         return EXIT_COMPLETED
+
+    def _finish_interrupted(self) -> int:
+        repo.finish_job(
+            self.db, self.job_id, "interrupted", error_code="interrupted",
+            error_message="Processing stopped because the app quit. Resume to continue.",
+        )
+        return EXIT_INTERRUPTED
 
     def _run(self, project: dict[str, Any], options: dict[str, Any]) -> None:
         source = project["source"]
@@ -348,10 +363,14 @@ def main(job_id: str, data_dir: str | None) -> int:
     # SIGTERM = the user cancelled the job; SIGINT = processing was interrupted
     # (the app quit, the server disappeared, or Ctrl-C) and should be resumable.
     def on_term(_signum, _frame):
-        raise Cancelled("The job was cancelled.")
+        if worker.stop_reason is None:
+            worker.stop_reason = "cancelled"
+            raise Cancelled("The job was cancelled.")
 
     def on_int(_signum, _frame):
-        raise _Interrupted()
+        if worker.stop_reason is None:
+            worker.stop_reason = "interrupted"
+            raise _Interrupted()
 
     signal.signal(signal.SIGTERM, on_term)
     signal.signal(signal.SIGINT, on_int)

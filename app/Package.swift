@@ -12,7 +12,11 @@ let package = Package(
         // Foundation-only: engine client, protocol types, formatting.
         .target(name: "VerbatimCore"),
         // SwiftUI / AVKit application.
-        .executableTarget(name: "Verbatim", dependencies: ["VerbatimCore"]),
+        .executableTarget(
+            name: "Verbatim",
+            dependencies: ["VerbatimCore"],
+            linkerSettings: [.linkedFramework("AVKit"), .linkedFramework("AVFoundation")]
+        ),
         .testTarget(name: "VerbatimCoreTests", dependencies: ["VerbatimCore"]),
     ]
 )

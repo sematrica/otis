@@ -326,7 +326,8 @@ def test_interrupted_job_recovers_after_restart(fw_model_dir, texts, data_dir, t
     second = EngineService(EnginePaths.create(data_dir), lambda *_: None)
     second.start()
     try:
-        assert repo.get_job(second.db, job["id"])["status"] == "interrupted"
+        stopped = repo.get_job(second.db, job["id"])
+        assert stopped["status"] == "interrupted", stopped["error"]
         second.jobs.resume(job["id"])
         final = wait_job(second, job["id"])
         assert final["status"] == "completed", final["error"]

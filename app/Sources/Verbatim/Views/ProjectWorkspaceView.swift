@@ -60,7 +60,7 @@ struct ProjectWorkspaceView: View {
     private func playerPanel(_ project: Project) -> some View {
         VStack(spacing: 0) {
             if let avPlayer = player.player {
-                VideoPlayer(player: avPlayer)
+                PlayerView(player: avPlayer)
                     .frame(minHeight: project.hasVideo ? 240 : 80)
             } else {
                 EmptyState(title: "Playback unavailable", systemImage: "play.slash", message: player.loadError)
