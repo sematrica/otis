@@ -106,6 +106,21 @@ jobs:
         run: scripts/build_app.sh
       - name: Smoke-test the app bundle
         run: scripts/smoke_test_app.sh build/Verbatim.app
+      - name: Create a test video
+        working-directory: engine
+        run: |
+          uv run python -c "
+          from pathlib import Path
+          from tests.conftest import encode_media, read_wav
+          encode_media(Path('$RUNNER_TEMP/jfk-video.mp4'), read_wav(Path('tests/corpus/jfk.wav')), video=True)"
+      - name: App self-test, faster-whisper (import → transcribe → workspace → quit)
+        run: >-
+          scripts/app_self_test.sh build/Verbatim.app "$RUNNER_TEMP/jfk-video.mp4"
+          "$RUNNER_TEMP/vdata/models/faster-whisper/small" faster-whisper "fellow Americans"
+      - name: App self-test, MLX
+        run: >-
+          scripts/app_self_test.sh build/Verbatim.app "$RUNNER_TEMP/jfk-video.mp4"
+          "$RUNNER_TEMP/vdata/models/mlx/small" mlx "fellow Americans"
       - name: Package artifact
         run: ditto -c -k --keepParent build/Verbatim.app build/Verbatim.zip
       - uses: actions/upload-artifact@v4

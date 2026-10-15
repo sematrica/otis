@@ -77,9 +77,17 @@ private struct SectionView: View {
             }
         }
         .id(section)  // reset navigation when switching sections
+        .onAppear(perform: handleOpenRequest)
+        .onChange(of: model.openProjectRequest) { _ in handleOpenRequest() }
     }
 
     private func open(_ projectID: String) {
         path.append(projectID)
+    }
+
+    private func handleOpenRequest() {
+        guard let id = model.openProjectRequest else { return }
+        model.openProjectRequest = nil
+        open(id)
     }
 }

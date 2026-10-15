@@ -81,7 +81,7 @@ echo "==> Recording build provenance"
     "$PY_BIN" -c 'import av; print("FFmpeg", av.ffmpeg_version_info); print(av.library_versions)'
     LIBAVCODEC="$(find "$PY/lib" -path '*av*' -name 'libavcodec*.dylib' | head -1)"
     if [[ -n "$LIBAVCODEC" ]]; then
-        strings "$LIBAVCODEC" | grep -m1 -E '^--(prefix|enable|disable)' || true
+        strings "$LIBAVCODEC" 2>/dev/null | grep -m1 -E '^--(prefix|enable|disable)' || true
     fi
 } > "$RES/BUILD_INFO.txt"
 

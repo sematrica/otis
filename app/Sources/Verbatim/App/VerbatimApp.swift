@@ -38,7 +38,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Needed when launched as a bare executable (swift run); harmless in a bundle.
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
-        Task { await model.start() }
+        if let selfTest = SelfTest.fromEnvironment() {
+            Task { await selfTest.run(model) }
+        } else {
+            Task { await model.start() }
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }

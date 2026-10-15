@@ -61,6 +61,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var downloads: [String: ModelDownload] = [:]
     @Published var alert: AppAlert?
     @Published var section: SidebarSection? = .library
+    /// Ask the current section to open a project's workspace.
+    @Published var openProjectRequest: String?
     /// Bumped whenever a project's transcript may have changed.
     @Published private(set) var transcriptRevision: [String: Int] = [:]
 
