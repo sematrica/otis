@@ -73,7 +73,7 @@ the GitHub-hosted macOS runner because the dev container cannot reach them.
 | Language | Swift 6 language mode, SwiftPM | tools 6.0 | strict concurrency | CI build |
 | Decode / resample | **PyAV** (FFmpeg 7 libraries, in-process) | `av>=15,<16` | No shell commands; no `ffmpeg` binary on `PATH` needed (Finder-launched apps don't inherit Homebrew `PATH`); streaming decode keeps memory flat. **PyAV 16+ ships macOS 14+ wheels only**, 15.x still ships macOS 13 arm64 wheels. | Linux + CI |
 | ASR (CPU, portable) | **faster-whisper** on CTranslate2 | `faster-whisper==1.2.1`, `ctranslate2>=4.4,<5` | Beam search, temperature fallback, Silero VAD (bundled ONNX, no download), word timestamps via cross-attention DTW, int8/float32 on Apple Silicon CPU. CTranslate2 has **no Metal backend** on macOS. | Linux (real weights) + CI |
-| ASR (Apple GPU) | **mlx-whisper** on MLX | `mlx-whisper==0.4.3` | Metal acceleration on Apple Silicon. **Greedy decoding only — no beam search**. Word timestamps supported. MLX ≥0.30 ships macOS 14+ wheels only, so the MLX backend is unavailable on macOS 13 and the engine reports it as such. Depends on PyTorch (bundle size). | CI (if the runner exposes Metal) |
+| ASR (Apple GPU) | **mlx-whisper** on MLX | `mlx-whisper==0.4.3` | Metal acceleration on Apple Silicon. **Greedy decoding only — no beam search**. Word timestamps supported. MLX ≥0.30 ships macOS 14+ wheels only, so the MLX backend is unavailable on macOS 13 and the engine reports it as such. Its declared PyTorch dependency is excluded (only its checkpoint converter imports torch). | CI (Apple M1, Metal GPU) |
 | VAD | Silero VAD v6 via faster-whisper | bundled | Reduces hallucinated text in silence; used directly by faster-whisper and as `clip_timestamps` for mlx-whisper | Linux |
 | ONNX runtime | onnxruntime | `>=1.17,<1.24` | needed by Silero VAD; 1.24+ is macOS 14+ only | Linux |
 | Model download | huggingface_hub | `>=0.23` | explicit `snapshot_download` into a plain directory; `local_files_only` when loading | CI |
@@ -96,7 +96,7 @@ Every ASR backend reports what it can actually do, and the job records the
 | Word timestamps | yes (DTW on alignment heads) | yes (DTW) |
 | Built-in VAD | yes (Silero) | no (engine supplies `clip_timestamps` from Silero) |
 | Language detection | yes | yes |
-| Per-segment language (multilingual) | yes (`multilingual=True`) | no (per chunk) |
+| Language reported per | chunk (not exposed per segment) | chunk |
 | Acceleration on Apple Silicon | CPU (Accelerate / int8) | Metal GPU |
 | Measurable progress | yes (segment end times) | yes (decoded frames) |
 
@@ -108,16 +108,22 @@ Every ASR backend reports what it can actually do, and the job records the
    decoded time ÷ container duration (only when the duration is known).
 3. **Plan** — one streaming pass computes 20 ms RMS energy; for recordings longer
    than ~12 min, cut points are placed at the quietest 0.5 s window within ±30 s
-   of each 10-minute boundary. Each chunk is decoded with 1 s padding on both sides,
-   but *owns* only the interval between its cut points.
+   of each 10-minute boundary. When the cut lies in a pause, each chunk's audio
+   extends into the pause but never past it, so neighbouring chunks never hear
+   the same speech. Only when no pause exists near a boundary is the audio padded
+   by 1 s on both sides (overlap). The first chunk gets 0.5 s of silent lead-in so
+   a recording that starts mid-word keeps its first word.
 4. **Load model** — one model, loaded once per job, from local files only.
 5. **Transcribe** — chunks are processed sequentially; the tail of the previous
    chunk's text is passed as the initial prompt to preserve context. Each chunk's
    raw result is persisted before moving on (resume point).
-6. **Finalize** — words are kept only if their midpoint lies in the chunk's owned
-   interval; a conservative n-gram check removes residual duplicates at
-   boundaries; segments, words, confidence statistics, and detected language are
-   written in one transaction.
+6. **Finalize** — at pause cuts, chunk results are concatenated unchanged (a test
+   asserts the transcript equals the concatenation of every chunk's raw words). At
+   cuts inside speech, the two decodings of the overlap are aligned and spliced at
+   a word both agree on; if they disagree, a loss-free time rule plus a
+   conservative duplicate check applies. Every such decision is recorded in the
+   segment's `flags`. Segments, words, confidence statistics and detected language
+   are written in one transaction.
 
 Hallucination guards already in Stage 1: VAD, temperature fallback with
 compression-ratio / log-probability / no-speech thresholds, prompt reset on
@@ -141,10 +147,10 @@ Whisper Medium is available for manual selection.
 
 ## 7. Model requirements
 
-Approximate download size and peak memory. Sizes are checked against the
-HuggingFace API by `scripts/verify_model_catalog.py` in CI (the dev container
-cannot reach HuggingFace). Peak memory is an estimate for a single loaded model
-plus decoding buffers and is not yet measured.
+Download sizes were verified against the HuggingFace API by
+`scripts/verify_model_catalog.py` in CI (all eight entries exist, contain the
+required files, and match the sizes shown to users). Peak memory is an estimate
+for a single loaded model plus decoding buffers and is **not yet measured**.
 
 | Model | Parameters | Download (fp16) | Est. peak memory | Backends |
 |-------|-----------:|----------------:|-----------------:|----------|
@@ -180,7 +186,8 @@ model loading always uses local files only. The storage folder is configurable
 2. **HuggingFace is unreachable from the development container.** Local
    end-to-end tests use real Whisper tiny/base/small CTranslate2 weights from a
    GitHub-hosted mirror, with a tokenizer rebuilt from OpenAI's tiktoken ranks and
-   verified token-by-token. Catalog repository IDs and sizes are verified in CI only.
+   verified token-by-token. CI downloads the official models through the engine's
+   own download path and verifies the catalog.
 3. **macOS 13 support is partial**: the MLX backend requires macOS 14+ with
    current wheels; on macOS 13 only the CPU backend (faster-whisper) is available.
 4. **Large-v3 on CPU is slow.** faster-whisper has no Metal backend; on an M2 Pro
@@ -190,8 +197,9 @@ model loading always uses local files only. The storage folder is configurable
    PyAV's prebuilt macOS wheel may impose GPL obligations; Stage 5 must verify the
    macOS wheel's build configuration (the packaging script records it) or rebuild
    PyAV against an LGPL-only FFmpeg.
-6. **mlx-whisper pulls in PyTorch** (~hundreds of MB). Whether transcription
-   works without it is untested; trimming is a Stage 5 optimisation.
+6. **Bundle size.** The Stage 1 bundle is about 800 MB (MLX, numba/llvmlite,
+   scipy, onnxruntime, CTranslate2, FFmpeg). PyTorch is already excluded and
+   MLX transcription is verified without it; further trimming is Stage 5 work.
 7. **pyannote.audio (Stage 2)**: current pipelines are gated on HuggingFace (the
    user must accept terms and provide a token once); PyTorch MPS support and memory
    use on 16 GB must be measured; licence terms of each pipeline must be checked.

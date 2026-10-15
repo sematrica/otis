@@ -18,7 +18,35 @@ done
 if kill -0 "$app_pid" 2>/dev/null; then
     echo "error: app did not finish the self-test" >&2; kill "$app_pid"; tail -40 "$OUT/app.log"; exit 1
 fi
-wait "$app_pid" || true
+status=0
+wait "$app_pid" || status=$?
+echo "app exit status: $status"
+if [[ ! -f "$OUT/result.json" || $status -ne 0 ]]; then
+    echo "---- app log ----"; tail -80 "$OUT/app.log" || true
+    echo "---- engine log ----"; tail -40 "$HOME/Library/Application Support/Verbatim/logs/engine.log" 2>/dev/null || true
+    report="$(ls -t "$HOME"/Library/Logs/DiagnosticReports/Verbatim*.ips 2>/dev/null | head -1 || true)"
+    if [[ -n "$report" ]]; then
+        echo "---- crash report: $report ----"
+        python3 - "$report" <<'PY'
+import json, sys
+text = open(sys.argv[1]).read()
+header, _, body = text.partition("\n")
+crash = json.loads(body)
+print("exception:", json.dumps(crash.get("exception")))
+print("termination:", json.dumps(crash.get("termination")))
+for key in ("asi", "lastExceptionBacktrace", "ktriageinfo"):
+    if key in crash:
+        print(key + ":", json.dumps(crash[key])[:3000])
+images = crash.get("usedImages", [])
+thread = crash["threads"][crash.get("faultingThread", 0)]
+print("faulting thread", crash.get("faultingThread"), thread.get("queue"))
+for frame in thread.get("frames", [])[:40]:
+    image = images[frame["imageIndex"]].get("name", "?") if frame.get("imageIndex", -1) < len(images) else "?"
+    print(f"  {image:28} {frame.get('symbol', hex(frame.get('imageOffset', 0)))}")
+PY
+    fi
+    exit 1
+fi
 cat "$OUT/result.json"
 python3 - "$OUT/result.json" "$EXPECTED" <<'PY'
 import json, sys

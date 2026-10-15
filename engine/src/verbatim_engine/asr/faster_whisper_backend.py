@@ -29,6 +29,8 @@ from .base import (
 
 log = logging.getLogger(__name__)
 
+RANDOM_SEED = 0
+
 
 class FasterWhisperBackend(Backend):
     name = "faster-whisper"
@@ -69,8 +71,11 @@ class FasterWhisperBackend(Backend):
                 f"The model folder is incomplete (missing {', '.join(missing)}).",
                 data={"path": str(model_dir), "missing": missing},
             )
+        import ctranslate2
         from faster_whisper import WhisperModel
 
+        # Temperature fallback samples; a fixed seed makes results reproducible.
+        ctranslate2.set_random_seed(RANDOM_SEED)
         threads = options.cpu_threads or performance_core_count()
         self._model = WhisperModel(
             str(model_dir),
@@ -80,7 +85,8 @@ class FasterWhisperBackend(Backend):
             num_workers=1,
             local_files_only=True,
         )
-        self._load_settings = {"device": "cpu", "compute_type": options.compute_type, "cpu_threads": threads}
+        self._load_settings = {"device": "cpu", "compute_type": options.compute_type, "cpu_threads": threads,
+                               "random_seed": RANDOM_SEED}
         return dict(self._load_settings)
 
     def transcribe(

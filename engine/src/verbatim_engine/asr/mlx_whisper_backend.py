@@ -134,11 +134,12 @@ class MlxWhisperBackend(Backend):
         if not metal_ok:
             raise BackendUnavailable("Metal is not available on this Mac.")
 
+        mx.random.seed(0)  # temperature fallback samples; keep results reproducible
         self._model_path = str(model_dir)
         # ModelHolder caches the model; mlx_whisper.transcribe reuses it as long
         # as the same path and dtype are passed.
         self._model = ModelHolder.get_model(self._model_path, mx.float16)
-        return {"device": "gpu", "dtype": self._dtype_name}
+        return {"device": "gpu", "dtype": self._dtype_name, "random_seed": 0}
 
     def _detect_language(self, audio: np.ndarray, start: float) -> tuple[str, float | None]:
         import mlx.core as mx
