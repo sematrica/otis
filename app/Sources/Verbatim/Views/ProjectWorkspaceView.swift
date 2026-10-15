@@ -239,6 +239,7 @@ struct TranscriptPanel: View {
 /// Which model and backend actually produced the transcript.
 private struct EffectiveSummary: View {
     let effective: JSONValue
+    @EnvironmentObject private var model: AppModel
     @State private var showDetails = false
 
     var body: some View {
@@ -267,9 +268,10 @@ private struct EffectiveSummary: View {
     }
 
     private var summary: String {
-        let model = effective.lookup("model")?.lookup("display_name")?.stringValue ?? "Unknown model"
-        let backend = effective.lookup("backend")?.stringValue ?? ""
-        return backend.isEmpty ? model : "\(model) · \(backend)"
+        let modelName = effective.lookup("model")?.lookup("display_name")?.stringValue ?? "Unknown model"
+        let backendID = effective.lookup("backend")?.stringValue ?? ""
+        let backend = model.engineInfo?.backends.first { $0.name == backendID }?.displayName ?? backendID
+        return backend.isEmpty ? modelName : "\(modelName) · \(backend)"
     }
 
     private struct Row: Identifiable {

@@ -67,6 +67,6 @@ macOS runner, builds the app bundle and smoke-tests it.
 app/       Swift package: VerbatimCore (engine client, protocol types) and the SwiftUI app
 engine/    Python engine: media, audio, ASR backends, jobs, storage, RPC server, CLI
 shared/    protocol fixtures captured from a real engine run (decoded by Swift tests)
-scripts/   build_app.sh, smoke_test_app.sh, dev_run.sh, verify_model_catalog.py
-docs/      ARCHITECTURE.md, ENGINE_PROTOCOL.md
+scripts/   build_app.sh, smoke_test_app.sh, app_self_test.sh, dev_run.sh, verify_model_catalog.py
+docs/      ARCHITECTURE.md, ENGINE_PROTOCOL.md, STAGE1_REPORT.md (results and limitations)
 ```
