@@ -11,17 +11,25 @@ VERBATIM_SELF_TEST_MEDIA="$MEDIA" VERBATIM_SELF_TEST_MODEL_DIR="$MODEL_DIR" \
 VERBATIM_SELF_TEST_BACKEND="$BACKEND" VERBATIM_SELF_TEST_OUTPUT="$OUT" \
     "$APP/Contents/MacOS/Verbatim" > "$OUT/app.log" 2>&1 &
 app_pid=$!
-for _ in $(seq 1 1800); do
+for _ in $(seq 1 360); do
     kill -0 "$app_pid" 2>/dev/null || break
     sleep 0.5
 done
 if kill -0 "$app_pid" 2>/dev/null; then
-    echo "error: app did not finish the self-test" >&2; kill "$app_pid"; tail -40 "$OUT/app.log"; exit 1
+    echo "error: app did not finish the self-test" >&2
+    echo "---- progress ----"; cat "$OUT/progress.log" 2>/dev/null || true
+    echo "---- app log ----"; tail -40 "$OUT/app.log" || true
+    echo "---- main thread sample ----"
+    sample "$app_pid" 2 -file "$OUT/sample.txt" >/dev/null 2>&1 || true
+    awk '/^Call graph:/{p=1} p{print} /^Total number in stack/{exit}' "$OUT/sample.txt" | head -120 || true
+    kill "$app_pid"
+    exit 1
 fi
 status=0
 wait "$app_pid" || status=$?
 echo "app exit status: $status"
 if [[ ! -f "$OUT/result.json" || $status -ne 0 ]]; then
+    echo "---- progress ----"; cat "$OUT/progress.log" 2>/dev/null || true
     echo "---- app log ----"; tail -80 "$OUT/app.log" || true
     echo "---- engine log ----"; tail -40 "$HOME/Library/Application Support/Verbatim/logs/engine.log" 2>/dev/null || true
     report="$(ls -t "$HOME"/Library/Logs/DiagnosticReports/Verbatim*.ips 2>/dev/null | head -1 || true)"

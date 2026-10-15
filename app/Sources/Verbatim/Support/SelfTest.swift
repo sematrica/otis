@@ -37,14 +37,30 @@ struct SelfTest {
         )
     }
 
+    /// Appends a line to progress.log so a hang can be located from outside.
+    private func step(_ message: String) {
+        let line = "\(Date().timeIntervalSince1970) \(message)\n"
+        let url = output.appendingPathComponent("progress.log")
+        if let handle = try? FileHandle(forWritingTo: url) {
+            handle.seekToEndOfFile()
+            handle.write(Data(line.utf8))
+            try? handle.close()
+        } else {
+            try? Data(line.utf8).write(to: url)
+        }
+    }
+
     func run(_ model: AppModel) async {
         var result: [String: Any] = ["backend": backend, "media": media.path]
         do {
             try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+            step("starting engine")
             await model.start()
+            step("engine state \(model.engineState)")
             guard model.engineState == .ready else { throw Failure(description: "engine not ready: \(model.engineState)") }
 
             let staged = await model.stage([media])
+            step("staged: \(staged.first?.error ?? "ok")")
             if let error = staged.first?.error { throw Failure(description: "validation failed: \(error)") }
             let options = JobOptions(mode: "balanced", backend: backend, modelPath: modelDirectory)
             guard await model.transcribe(staged, options: options) else {
@@ -53,6 +69,7 @@ struct SelfTest {
             guard let project = model.projects.first(where: { $0.source.path == media.path }) ?? model.projects.first else {
                 throw Failure(description: "project was not created")
             }
+            step("job queued for project \(project.id)")
 
             // Completion arrives through the engine's job.updated notifications.
             let deadline = Date().addingTimeInterval(900)
@@ -64,7 +81,9 @@ struct SelfTest {
             guard let job, job.status == .completed else {
                 throw Failure(description: "job ended as \(job?.status.rawValue ?? "timeout"): \(job?.error?.message ?? "")")
             }
+            step("job \(job.status.rawValue)")
             let transcript = try await model.transcript(for: project)
+            step("transcript loaded: \(transcript.segments.count) segments")
             result["status"] = "completed"
             result["language"] = transcript.language.map { $0 as Any } ?? NSNull()
             result["segments"] = transcript.segments.count
@@ -75,7 +94,9 @@ struct SelfTest {
             model.section = .library
             model.openProjectRequest = project.id
             try await Task.sleep(for: .seconds(4))
+            step("workspace opened; taking snapshot")
             result["snapshot"] = snapshotWindow(to: output.appendingPathComponent("window.png"))
+            step("snapshot done")
         } catch {
             result["status"] = "failed"
             result["error"] = String(describing: error)
@@ -83,6 +104,7 @@ struct SelfTest {
         if let data = try? JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]) {
             try? data.write(to: output.appendingPathComponent("result.json"))
         }
+        step("result written; quitting")
         NSApp.terminate(nil)  // the normal quit path: the engine is stopped cleanly
     }
 
