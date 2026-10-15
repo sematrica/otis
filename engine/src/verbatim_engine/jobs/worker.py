@@ -27,7 +27,10 @@ import time
 from collections import Counter
 from typing import Any, Callable
 
-from ..asr.base import DecodeOptions, TranscriptionResult
+import numpy as np
+
+from ..asr.base import DecodeOptions, TranscriptionResult, shift_segments
+from ..audio import SAMPLE_RATE
 from ..asr.merge import apply_ownership, assemble
 from ..asr.registry import create_backend
 from ..audio.chunking import energy_envelope, plan_chunks
@@ -45,6 +48,11 @@ log = logging.getLogger(__name__)
 
 EXIT_COMPLETED, EXIT_FAILED, EXIT_CANCELLED, EXIT_INTERRUPTED = 0, 1, 2, 3
 PROMPT_WORDS = 48
+#: Silence prepended to a chunk that starts at the very beginning of the
+#: recording. Every later chunk begins inside a pause or an overlap, but a
+#: recording can start mid-speech, and Whisper can drop a first word that
+#: starts at sample 0 with no lead-in. Timestamps are shifted back afterwards.
+LEAD_IN_SECONDS = 0.5
 _PROGRESS_INTERVAL_S = 0.5
 
 
@@ -261,6 +269,9 @@ class Worker:
             prompt = self._prompt_from_previous(chunk.index, existing, results)
             options = DecodeOptions(**{**resolved.decode.__dict__, "initial_prompt": prompt})
             audio = reader.read(chunk.audio_start, chunk.audio_end)
+            lead_in = LEAD_IN_SECONDS if chunk.audio_start <= 0.0 else 0.0
+            if lead_in:
+                audio = np.concatenate([np.zeros(int(lead_in * SAMPLE_RATE), dtype=np.float32), audio])
             span = chunk.owned_end - chunk.owned_start
             started = time.monotonic()
 
@@ -268,6 +279,9 @@ class Worker:
                 self._progress("transcribe", base + span * fraction, owned_total)
 
             result, decode_effective = backend.transcribe(audio, options, on_progress)
+            if lead_in:
+                result.segments = shift_segments(result.segments, -lead_in)
+                result.duration -= lead_in
             repo.complete_chunk(self.db, self.job_id, chunk.index, result.to_dict(), time.monotonic() - started)
             results[chunk.index] = result
             done_base += span

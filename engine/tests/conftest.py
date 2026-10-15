@@ -98,12 +98,30 @@ def synthesize(text: str, out_dir: Path, name: str, lang: str = "en") -> np.ndar
         subprocess.run(["espeak-ng", "-v", voice, "-s", "150", "-w", str(raw), text], check=True, capture_output=True)
     elif sys.platform == "darwin" and shutil.which("say"):
         raw = out_dir / f"{name}.raw.aiff"
-        subprocess.run(["say", "-o", str(raw), text], check=True, capture_output=True)
+        voice = macos_voice(lang)
+        if voice is None:
+            pytest.skip(f"no macOS voice installed for language '{lang}'")
+        subprocess.run(["say", "-v", voice, "-o", str(raw), text], check=True, capture_output=True)
     else:
         pytest.skip("no speech synthesizer (espeak-ng or say) available")
     wav = out_dir / f"{name}.wav"
     extract_audio(raw, wav)
     return read_wav(wav)
+
+
+def macos_voice(lang: str) -> str | None:
+    """First installed `say` voice for a language (preferring en_US for English)."""
+    import re
+
+    listing = subprocess.run(["say", "-v", "?"], capture_output=True, text=True, check=False).stdout
+    voices = []
+    for line in listing.splitlines():
+        m = re.match(r"^(?P<name>.+?)\s+(?P<locale>[a-z]{2,3}_[A-Za-z0-9]{2,4})\s+#", line)
+        if m:
+            voices.append((m.group("name").strip(), m.group("locale")))
+    preferred = [v for v, loc in voices if loc == "en_US"] if lang == "en" else []
+    matching = [v for v, loc in voices if loc.split("_")[0] == lang]
+    return (preferred or matching or [None])[0]
 
 
 def silence(seconds: float) -> np.ndarray:

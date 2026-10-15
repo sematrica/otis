@@ -40,8 +40,10 @@ sed -e "s/__BUNDLE_ID__/$BUNDLE_ID/" -e "s/__VERSION__/$VERSION/" -e "s/__BUILD_
 plutil -lint "$APP/Contents/Info.plist" >/dev/null
 
 echo "==> Embedding CPython $PYTHON_VERSION (python-build-standalone, relocatable)"
-uv python install "$PYTHON_VERSION"
-PY_EXE="$(uv python find "$PYTHON_VERSION")"
+# Only uv-managed builds are relocatable (a Homebrew or python.org Python is not).
+uv python install --python-preference only-managed "$PYTHON_VERSION"
+PY_EXE="$(uv python find --python-preference only-managed "$PYTHON_VERSION")"
+echo "    using $PY_EXE"
 PY_HOME="$(cd "$(dirname "$PY_EXE")/.." && pwd -P)"
 ditto "$PY_HOME" "$PY"
 # The copy is ours to manage; uv marks its managed interpreters as externally managed.

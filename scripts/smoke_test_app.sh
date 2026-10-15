@@ -44,7 +44,13 @@ sleep 3
 grep -q "engine serving" "$LOG_DIR/engine.log" || { echo "error: engine log has no start-up line" >&2; exit 1; }
 
 echo "==> Quitting the app"
-osascript -e "tell application id \"$BUNDLE_ID\" to quit" 2>/dev/null || kill -TERM "$app_pid"
+# Graceful quit via Apple Events; bounded, because an automation-permission
+# prompt would block forever on a headless runner. Fall back to SIGTERM (the
+# engine must still exit: it stops when its stdin closes).
+if ! perl -e 'alarm 20; exec @ARGV' osascript -e "tell application id \"$BUNDLE_ID\" to quit" 2>/dev/null; then
+    echo "graceful quit unavailable; sending SIGTERM to the app"
+    kill -TERM "$app_pid" 2>/dev/null || true
+fi
 for _ in $(seq 1 60); do
     if ! kill -0 "$engine_pid" 2>/dev/null && ! kill -0 "$app_pid" 2>/dev/null; then
         echo "app and engine exited cleanly"

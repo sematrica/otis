@@ -54,6 +54,19 @@ class Segment:
         )
 
 
+def shift_segments(segments: list[Segment], offset: float) -> list[Segment]:
+    """Shift times by ``offset`` seconds, clamping at 0 (used to undo a lead-in)."""
+    shifted = []
+    for seg in segments:
+        moved = seg.shifted(offset)
+        moved.start, moved.end = max(0.0, moved.start), max(0.0, moved.end)
+        if moved.words:
+            for w in moved.words:
+                w.start, w.end = max(0.0, w.start), max(0.0, w.end)
+        shifted.append(moved)
+    return shifted
+
+
 @dataclass
 class TranscriptionResult:
     language: str | None

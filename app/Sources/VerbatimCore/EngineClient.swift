@@ -188,8 +188,9 @@ public actor EngineClient {
         let id = nextID
         nextID += 1
         let request = Request(id: id, method: method, params: params)
-        var payload = try encoder.encode(request)
-        payload.append(0x0A)
+        var encoded = try encoder.encode(request)
+        encoded.append(0x0A)
+        let payload = encoded
 
         let data: Data = try await withCheckedThrowingContinuation { continuation in
             pending[id] = continuation

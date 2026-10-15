@@ -185,11 +185,11 @@ def test_long_recording_chunked_at_pauses(service, fw_model_dir, texts, tmp_path
     path, reference = build_long_recording(tmp_path, texts["english_paragraphs"])
     duration = len(read_wav(path)) / SR
     project = service.projects_create({"path": str(path)})
-    job = service.jobs_start({"project_id": project["id"], "options": options_for(fw_model_dir, chunk_seconds=30)})
+    job = service.jobs_start({"project_id": project["id"], "options": options_for(fw_model_dir, chunk_seconds=20)})
     job = wait_job(service, job["id"])
     assert job["status"] == "completed", job["error"]
     chunks = repo.load_chunks(service.db, job["id"])
-    assert len(chunks) >= 3
+    assert len(chunks) >= 3, f"{duration:.1f}s recording"
     assert not any(c.cut_in_speech for c, _ in chunks)
     text = transcript_text(service, project["id"])
     wer = record("tts_long_chunked", reference, text, chunks=len(chunks), duration=round(duration, 1))
@@ -198,6 +198,23 @@ def test_long_recording_chunked_at_pauses(service, fw_model_dir, texts, tmp_path
     segments = repo.get_transcript(service.db, project["id"])["segments"]
     assert all(a["start"] <= b["start"] for a, b in zip(segments, segments[1:]))
     assert segments[-1]["end"] <= duration + 0.5
+
+
+def test_abrupt_onset_keeps_first_word(service, fw_model_dir, texts, tmp_path):
+    # Recordings often start mid-speech; the first word must not be dropped.
+    sentences = texts["english_paragraphs"][:3]
+    parts = [synthesize(s, tmp_path / "tts", f"onset{i}") for i, s in enumerate(sentences)]
+    audio = np.concatenate([parts[0], silence(0.8), parts[1], silence(0.8), parts[2]])
+    first = np.flatnonzero(np.abs(audio) > 0.01)[0]
+    path = write_wav(tmp_path / "abrupt.wav", audio[first:])  # speech starts at sample 0
+    project = service.projects_create({"path": str(path)})
+    job = wait_job(service, service.jobs_start({"project_id": project["id"], "options": options_for(fw_model_dir)})["id"])
+    assert job["status"] == "completed", job["error"]
+    text = transcript_text(service, project["id"])
+    record("tts_abrupt_onset", " ".join(sentences), text)
+    assert normalize(text).startswith(" ".join(normalize(sentences[0]).split()[:3])), text
+    segments = repo.get_transcript(service.db, project["id"])["segments"]
+    assert segments[0]["start"] >= 0.0 and segments[0]["start"] < 0.5
 
 
 def test_cuts_inside_continuous_speech(service, fw_model_dir, texts, tmp_path):
