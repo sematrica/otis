@@ -1,0 +1,45 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "verbatim-engine"
+version = "0.1.0"
+description = "Local transcription engine for the Verbatim macOS app"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = { text = "Proprietary" }
+dependencies = [
+  "numpy>=1.26",
+  # PyAV 16+ only ships macOS 14+ wheels; 15.x still supports macOS 13 on arm64.
+  "av>=15,<16",
+  "faster-whisper==1.2.1",
+  "ctranslate2>=4.4,<5",
+  # onnxruntime (Silero VAD) 1.24+ only ships macOS 14+ wheels.
+  "onnxruntime>=1.17,<1.24",
+  "huggingface_hub>=0.23",
+  # Apple-GPU backend. Its PyTorch dependency is only used by its checkpoint
+  # converter, so it is excluded via [tool.uv] override-dependencies below.
+  "mlx-whisper==0.4.3; sys_platform == 'darwin' and platform_machine == 'arm64'",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+verbatim-engine = "verbatim_engine.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/verbatim_engine"]
+
+[tool.uv]
+# mlx-whisper declares torch as a dependency but never imports it at runtime
+# (only mlx_whisper/torch_whisper.py, the checkpoint converter, does).
+override-dependencies = ["torch; sys_platform == 'never'"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+  "model: requires real Whisper model weights (set VERBATIM_TEST_MODEL_DIR)",
+  "slow: long-running end-to-end test",
+]

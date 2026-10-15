@@ -1,0 +1,241 @@
+{
+  "id": 26,
+  "result": {
+    "effective": {
+      "backend": "faster-whisper",
+      "chunk_seconds": 600.0,
+      "chunking": {
+        "chunks": 1,
+        "pad_seconds": 1.0,
+        "target_seconds": 600.0
+      },
+      "decode": {
+        "backend": "faster-whisper",
+        "beam_size": 5,
+        "best_of": 5,
+        "compression_ratio_threshold": 2.4,
+        "condition_on_previous_text": true,
+        "hallucination_silence_threshold": null,
+        "log_prob_threshold": -1.0,
+        "no_speech_threshold": 0.6,
+        "patience": 1.0,
+        "temperatures": [
+          0.0,
+          0.2,
+          0.4,
+          0.6,
+          0.8,
+          1.0
+        ],
+        "vad": "silero (built-in)",
+        "word_timestamps": true
+      },
+      "load": {
+        "compute_type": "int8",
+        "cpu_threads": 4,
+        "device": "cpu"
+      },
+      "mode": "balanced",
+      "model": {
+        "display_name": "Custom model (small-int8)",
+        "id": null,
+        "path": "/Users/example/Models/faster-whisper-small",
+        "revision": null
+      },
+      "warnings": []
+    },
+    "job_id": "9da29a65e644494a8d23f82edf20c192",
+    "language": "en",
+    "project_id": "3bb390ef217242898b976d7fd881b2da",
+    "segments": [
+      {
+        "avg_logprob": -0.20357367973173818,
+        "chunk_index": 0,
+        "compression_ratio": 1.3333333333333333,
+        "end": 7.44,
+        "flags": [],
+        "id": 1,
+        "language": "en",
+        "no_speech_prob": 0.06327448040246964,
+        "ordinal": 0,
+        "original_text": "And so, my fellow Americans, ask not what your country can do for you.",
+        "speaker_id": null,
+        "start": 0.0,
+        "text": "And so, my fellow Americans, ask not what your country can do for you.",
+        "words": [
+          {
+            "end": 0.52,
+            "probability": 0.7532877326011658,
+            "start": 0.0,
+            "text": " And",
+            "timing_source": "whisper"
+          },
+          {
+            "end": 0.86,
+            "probability": 0.987804651260376,
+            "start": 0.52,
+            "text": " so,",
+            "timing_source": "whisper"
+          },
+          {
+            "end": 1.2,
+            "probability": 0.9893996119499207,
+            "start": 1.06,
+            "text": " my",
+            "timing_source": "whisper"
+          },
+          {
+            "end": 1.52,
+            "probability": 0.9954866766929626,
+            "start": 1.2,
+            "text": " fellow",
+            "timing_source": "whisper"
+          },
+          {
+            "end": 2.1,
+            "probability": 0.952380895614624,
+            "start": 1.52,
+            "text": " Americans,",
+            "timing_source": "whisper"
+          },
+          {
+            "end": 3.7,
+            "probability": 0.9502865672111511,
+            "start": 3.26,
+            "text": " ask",
+            "timing_source": "whisper"
+          },
+          {
+            "end": 4.22,
+            "probability": 0.7638673782348633,
+            "start": 3.7,
+            "text": " not",
+            "timing_source": "whisper"
+          },
+          {
+            "end": 5.54,
+            "probability": 0.9469894766807556,
+            "start": 4.22,
+            "text": " what",
+            "timing_source": "whisper"
+          },
+          {
+            "end": 5.78,
+            "probability": 0.9896283149719238,
+            "start": 5.54,
+            "text": " your",
+            "timing_source": "whisper"
+          },
+          {
+            "end": 6.28,
+            "probability": 0.9926942586898804,
+            "start": 5.78,
+            "text": " country",
+            "timing_source": "whisper"
+          },
+          {
+            "end": 6.62,
+            "probability": 0.9979054927825928,
+            "start": 6.28,
+            "text": " can",
+            "timing_source": "whisper"
+          },
+          {
+            "end": 6.86,
+            "probability": 0.9989492297172546,
+            "start": 6.62,
+            "text": " do",
+            "timing_source": "whisper"
+          },
+          {
+            "end": 7.08,
+            "probability": 0.9951600432395935,
+            "start": 6.86,
+            "text": " for",
+            "timing_source": "whisper"
+          },
+          {
+            "end": 7.44,
+            "probability": 0.9982579350471497,
+            "start": 7.08,
+            "text": " you.",
+            "timing_source": "whisper"
+          }
+        ]
+      },
+      {
+        "avg_logprob": -0.20357367973173818,
+        "chunk_index": 0,
+        "compression_ratio": 1.3333333333333333,
+        "end": 10.34,
+        "flags": [],
+        "id": 2,
+        "language": "en",
+        "no_speech_prob": 0.06327448040246964,
+        "ordinal": 1,
+        "original_text": "Ask what you can do for your country.",
+        "speaker_id": null,
+        "start": 8.08,
+        "text": "Ask what you can do for your country.",
+        "words": [
+          {
+            "end": 8.46,
+            "probability": 0.9792221188545227,
+            "start": 8.08,
+            "text": " Ask",
+            "timing_source": "whisper"
+          },
+          {
+            "end": 8.78,
+            "probability": 0.9944532513618469,
+            "start": 8.46,
+            "text": " what",
+            "timing_source": "whisper"
+          },
+          {
+            "end": 9.06,
+            "probability": 0.9690468311309814,
+            "start": 8.78,
+            "text": " you",
+            "timing_source": "whisper"
+          },
+          {
+            "end": 9.34,
+            "probability": 0.9975868463516235,
+            "start": 9.06,
+            "text": " can",
+            "timing_source": "whisper"
+          },
+          {
+            "end": 9.58,
+            "probability": 0.9990359544754028,
+            "start": 9.34,
+            "text": " do",
+            "timing_source": "whisper"
+          },
+          {
+            "end": 9.78,
+            "probability": 0.997647225856781,
+            "start": 9.58,
+            "text": " for",
+            "timing_source": "whisper"
+          },
+          {
+            "end": 9.94,
+            "probability": 0.9978294968605042,
+            "start": 9.78,
+            "text": " your",
+            "timing_source": "whisper"
+          },
+          {
+            "end": 10.34,
+            "probability": 0.9986374974250793,
+            "start": 9.94,
+            "text": " country.",
+            "timing_source": "whisper"
+          }
+        ]
+      }
+    ]
+  }
+}

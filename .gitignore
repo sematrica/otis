@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+*.egg-info/
+engine/dist/
+engine/build/
+
+# Swift / Xcode
+app/.build/
+app/.swiftpm/
+*.xcodeproj/xcuserdata/
+DerivedData/
+
+# Build outputs
+build/
+dist/
+*.app
+*.dmg
+*.zip
+
+# Local test data / models (never commit weights)
+*.bin
+*.safetensors
+*.npz
+test-reports/
+.DS_Store

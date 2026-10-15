@@ -1,0 +1,104 @@
+{
+  "id": 10,
+  "result": {
+    "attempt": 0,
+    "cancel_requested": false,
+    "created_at": "2026-10-15T04:40:26.855Z",
+    "current_stage": null,
+    "effective": null,
+    "elapsed_seconds": null,
+    "error": null,
+    "finished_at": null,
+    "id": "9da29a65e644494a8d23f82edf20c192",
+    "kind": "transcribe",
+    "mode": "balanced",
+    "options": {
+      "backend": "faster-whisper",
+      "chunk_seconds": 600.0,
+      "language": null,
+      "mode": "balanced",
+      "model_id": null,
+      "model_path": "/Users/example/Models/faster-whisper-small",
+      "vad": true
+    },
+    "project_id": "3bb390ef217242898b976d7fd881b2da",
+    "project_title": "JFK",
+    "stages": [
+      {
+        "detail": null,
+        "elapsed_seconds": null,
+        "eta_seconds": null,
+        "finished_at": null,
+        "fraction": null,
+        "label": "Checking source",
+        "progress": null,
+        "stage": "prepare",
+        "started_at": null,
+        "status": "pending"
+      },
+      {
+        "detail": null,
+        "elapsed_seconds": null,
+        "eta_seconds": null,
+        "finished_at": null,
+        "fraction": null,
+        "label": "Extracting audio",
+        "progress": null,
+        "stage": "extract",
+        "started_at": null,
+        "status": "pending"
+      },
+      {
+        "detail": null,
+        "elapsed_seconds": null,
+        "eta_seconds": null,
+        "finished_at": null,
+        "fraction": null,
+        "label": "Analyzing audio",
+        "progress": null,
+        "stage": "analyze",
+        "started_at": null,
+        "status": "pending"
+      },
+      {
+        "detail": null,
+        "elapsed_seconds": null,
+        "eta_seconds": null,
+        "finished_at": null,
+        "fraction": null,
+        "label": "Loading model",
+        "progress": null,
+        "stage": "load_model",
+        "started_at": null,
+        "status": "pending"
+      },
+      {
+        "detail": null,
+        "elapsed_seconds": null,
+        "eta_seconds": null,
+        "finished_at": null,
+        "fraction": null,
+        "label": "Transcribing",
+        "progress": null,
+        "stage": "transcribe",
+        "started_at": null,
+        "status": "pending"
+      },
+      {
+        "detail": null,
+        "elapsed_seconds": null,
+        "eta_seconds": null,
+        "finished_at": null,
+        "fraction": null,
+        "label": "Saving transcript",
+        "progress": null,
+        "stage": "finalize",
+        "started_at": null,
+        "status": "pending"
+      }
+    ],
+    "started_at": null,
+    "status": "queued",
+    "updated_at": "2026-10-15T04:40:26.855Z"
+  }
+}

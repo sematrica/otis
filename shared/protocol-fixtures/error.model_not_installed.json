@@ -1,0 +1,13 @@
+{
+  "error": {
+    "code": "model_not_installed",
+    "data": {
+      "alternatives": [],
+      "approx_download_bytes": 3090000000,
+      "display_name": "Whisper Large-v3",
+      "model_id": "faster-whisper/large-v3"
+    },
+    "message": "Whisper Large-v3 is not installed. Download it in Settings \u2192 Models."
+  },
+  "id": 5
+}

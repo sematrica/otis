@@ -1,0 +1,28 @@
+{
+  "id": 7,
+  "result": {
+    "audio_streams": [
+      {
+        "channels": 1,
+        "codec": "pcm_s16le",
+        "duration": 11.0,
+        "index": 0,
+        "is_default": false,
+        "language": null,
+        "sample_rate": 16000
+      }
+    ],
+    "bit_rate": 256056,
+    "duration": 11.0,
+    "format_long_name": "WAV / WAVE (Waveform Audio)",
+    "format_name": "wav",
+    "has_audio": true,
+    "has_video": false,
+    "mtime_ns": 1792037526637908643,
+    "path": "/Users/example/verbatim/engine/tests/corpus/jfk.wav",
+    "selected_audio_stream": 0,
+    "size_bytes": 352078,
+    "start_time": 0.0,
+    "video_streams": []
+  }
+}

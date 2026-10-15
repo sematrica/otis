@@ -1,0 +1,291 @@
+{
+  "id": 3,
+  "result": {
+    "backends": [
+      {
+        "available": true,
+        "capabilities": {
+          "acceleration": "CTranslate2 on CPU",
+          "beam_search": true,
+          "builtin_vad": true,
+          "device": "cpu",
+          "language_detection": true,
+          "word_timestamps": true
+        },
+        "display_name": "faster-whisper (CPU)",
+        "name": "faster-whisper",
+        "unavailable_reason": null
+      },
+      {
+        "available": false,
+        "capabilities": {
+          "acceleration": "MLX on Metal",
+          "beam_search": false,
+          "builtin_vad": false,
+          "device": "gpu",
+          "language_detection": true,
+          "word_timestamps": true
+        },
+        "display_name": "MLX (Apple GPU)",
+        "name": "mlx",
+        "unavailable_reason": "MLX requires a Mac with Apple Silicon."
+      }
+    ],
+    "downloads": {},
+    "models": [
+      {
+        "allow_patterns": [
+          "config.json",
+          "preprocessor_config.json",
+          "model.bin",
+          "tokenizer.json",
+          "vocabulary.*"
+        ],
+        "approx_download_bytes": 480000000,
+        "backend": "faster-whisper",
+        "display_name": "Whisper Small",
+        "family": "small",
+        "id": "faster-whisper/small",
+        "memory_estimates": {
+          "float32": 1400000000,
+          "int8": 800000000
+        },
+        "multilingual": true,
+        "notes": "",
+        "parameters": "244M",
+        "repo_id": "Systran/faster-whisper-small",
+        "revision": null,
+        "status": {
+          "downloaded_at": null,
+          "installed": false,
+          "missing": [
+            "model folder"
+          ],
+          "path": "/Users/example/Library/Application Support/Verbatim/models/faster-whisper/small",
+          "revision": null,
+          "size_on_disk": 0
+        }
+      },
+      {
+        "allow_patterns": [
+          "config.json",
+          "preprocessor_config.json",
+          "model.bin",
+          "tokenizer.json",
+          "vocabulary.*"
+        ],
+        "approx_download_bytes": 1530000000,
+        "backend": "faster-whisper",
+        "display_name": "Whisper Medium",
+        "family": "medium",
+        "id": "faster-whisper/medium",
+        "memory_estimates": {
+          "float32": 3500000000,
+          "int8": 1600000000
+        },
+        "multilingual": true,
+        "notes": "",
+        "parameters": "769M",
+        "repo_id": "Systran/faster-whisper-medium",
+        "revision": null,
+        "status": {
+          "downloaded_at": null,
+          "installed": false,
+          "missing": [
+            "model folder"
+          ],
+          "path": "/Users/example/Library/Application Support/Verbatim/models/faster-whisper/medium",
+          "revision": null,
+          "size_on_disk": 0
+        }
+      },
+      {
+        "allow_patterns": [
+          "config.json",
+          "preprocessor_config.json",
+          "model.bin",
+          "tokenizer.json",
+          "vocabulary.*"
+        ],
+        "approx_download_bytes": 3090000000,
+        "backend": "faster-whisper",
+        "display_name": "Whisper Large-v3",
+        "family": "large-v3",
+        "id": "faster-whisper/large-v3",
+        "memory_estimates": {
+          "float32": 6800000000,
+          "int8": 2600000000
+        },
+        "multilingual": true,
+        "notes": "Highest accuracy. Slow on CPU; float32 (Maximum Accuracy) needs about 7 GB.",
+        "parameters": "1550M",
+        "repo_id": "Systran/faster-whisper-large-v3",
+        "revision": null,
+        "status": {
+          "downloaded_at": null,
+          "installed": false,
+          "missing": [
+            "model folder"
+          ],
+          "path": "/Users/example/Library/Application Support/Verbatim/models/faster-whisper/large-v3",
+          "revision": null,
+          "size_on_disk": 0
+        }
+      },
+      {
+        "allow_patterns": [
+          "config.json",
+          "preprocessor_config.json",
+          "model.bin",
+          "tokenizer.json",
+          "vocabulary.*"
+        ],
+        "approx_download_bytes": 1620000000,
+        "backend": "faster-whisper",
+        "display_name": "Whisper Large-v3 Turbo",
+        "family": "large-v3-turbo",
+        "id": "faster-whisper/large-v3-turbo",
+        "memory_estimates": {
+          "float32": 3800000000,
+          "int8": 1700000000
+        },
+        "multilingual": true,
+        "notes": "Pruned decoder: much faster than Large-v3, slightly less accurate.",
+        "parameters": "809M",
+        "repo_id": "mobiuslabsgmbh/faster-whisper-large-v3-turbo",
+        "revision": null,
+        "status": {
+          "downloaded_at": null,
+          "installed": false,
+          "missing": [
+            "model folder"
+          ],
+          "path": "/Users/example/Library/Application Support/Verbatim/models/faster-whisper/large-v3-turbo",
+          "revision": null,
+          "size_on_disk": 0
+        }
+      },
+      {
+        "allow_patterns": [
+          "config.json",
+          "weights.safetensors",
+          "weights.npz"
+        ],
+        "approx_download_bytes": 480000000,
+        "backend": "mlx",
+        "display_name": "Whisper Small",
+        "family": "small",
+        "id": "mlx/small",
+        "memory_estimates": {
+          "float16": 1000000000
+        },
+        "multilingual": true,
+        "notes": "",
+        "parameters": "244M",
+        "repo_id": "mlx-community/whisper-small-mlx",
+        "revision": null,
+        "status": {
+          "downloaded_at": null,
+          "installed": false,
+          "missing": [
+            "model folder"
+          ],
+          "path": "/Users/example/Library/Application Support/Verbatim/models/mlx/small",
+          "revision": null,
+          "size_on_disk": 0
+        }
+      },
+      {
+        "allow_patterns": [
+          "config.json",
+          "weights.safetensors",
+          "weights.npz"
+        ],
+        "approx_download_bytes": 1530000000,
+        "backend": "mlx",
+        "display_name": "Whisper Medium",
+        "family": "medium",
+        "id": "mlx/medium",
+        "memory_estimates": {
+          "float16": 2300000000
+        },
+        "multilingual": true,
+        "notes": "",
+        "parameters": "769M",
+        "repo_id": "mlx-community/whisper-medium-mlx",
+        "revision": null,
+        "status": {
+          "downloaded_at": null,
+          "installed": false,
+          "missing": [
+            "model folder"
+          ],
+          "path": "/Users/example/Library/Application Support/Verbatim/models/mlx/medium",
+          "revision": null,
+          "size_on_disk": 0
+        }
+      },
+      {
+        "allow_patterns": [
+          "config.json",
+          "weights.safetensors",
+          "weights.npz"
+        ],
+        "approx_download_bytes": 3090000000,
+        "backend": "mlx",
+        "display_name": "Whisper Large-v3",
+        "family": "large-v3",
+        "id": "mlx/large-v3",
+        "memory_estimates": {
+          "float16": 4200000000
+        },
+        "multilingual": true,
+        "notes": "Highest accuracy. Greedy decoding only (no beam search in mlx-whisper).",
+        "parameters": "1550M",
+        "repo_id": "mlx-community/whisper-large-v3-mlx",
+        "revision": null,
+        "status": {
+          "downloaded_at": null,
+          "installed": false,
+          "missing": [
+            "model folder"
+          ],
+          "path": "/Users/example/Library/Application Support/Verbatim/models/mlx/large-v3",
+          "revision": null,
+          "size_on_disk": 0
+        }
+      },
+      {
+        "allow_patterns": [
+          "config.json",
+          "weights.safetensors",
+          "weights.npz"
+        ],
+        "approx_download_bytes": 1620000000,
+        "backend": "mlx",
+        "display_name": "Whisper Large-v3 Turbo",
+        "family": "large-v3-turbo",
+        "id": "mlx/large-v3-turbo",
+        "memory_estimates": {
+          "float16": 2400000000
+        },
+        "multilingual": true,
+        "notes": "Pruned decoder: much faster than Large-v3, slightly less accurate.",
+        "parameters": "809M",
+        "repo_id": "mlx-community/whisper-large-v3-turbo",
+        "revision": null,
+        "status": {
+          "downloaded_at": null,
+          "installed": false,
+          "missing": [
+            "model folder"
+          ],
+          "path": "/Users/example/Library/Application Support/Verbatim/models/mlx/large-v3-turbo",
+          "revision": null,
+          "size_on_disk": 0
+        }
+      }
+    ],
+    "models_dir": "/Users/example/Library/Application Support/Verbatim/models"
+  }
+}

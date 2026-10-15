@@ -1,0 +1,10 @@
+{
+  "error": {
+    "code": "not_found",
+    "data": {
+      "project_id": "missing"
+    },
+    "message": "Project not found."
+  },
+  "id": 6
+}

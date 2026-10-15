@@ -1,0 +1,26 @@
+{
+  "id": 9,
+  "result": {
+    "options": {
+      "backend": "faster-whisper",
+      "chunk_seconds": 600.0,
+      "language": null,
+      "mode": "balanced",
+      "model_id": null,
+      "model_path": "/Users/example/Models/faster-whisper-small",
+      "vad": true
+    },
+    "resolved": {
+      "backend": "faster-whisper",
+      "chunk_seconds": 600.0,
+      "mode": "balanced",
+      "model": {
+        "display_name": "Custom model (small-int8)",
+        "id": null,
+        "path": "/Users/example/Models/faster-whisper-small",
+        "revision": null
+      },
+      "warnings": []
+    }
+  }
+}

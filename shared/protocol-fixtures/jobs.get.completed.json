@@ -1,0 +1,158 @@
+{
+  "id": 25,
+  "result": {
+    "attempt": 1,
+    "cancel_requested": false,
+    "created_at": "2026-10-15T04:40:26.855Z",
+    "current_stage": "finalize",
+    "effective": {
+      "backend": "faster-whisper",
+      "chunk_seconds": 600.0,
+      "chunking": {
+        "chunks": 1,
+        "pad_seconds": 1.0,
+        "target_seconds": 600.0
+      },
+      "decode": {
+        "backend": "faster-whisper",
+        "beam_size": 5,
+        "best_of": 5,
+        "compression_ratio_threshold": 2.4,
+        "condition_on_previous_text": true,
+        "hallucination_silence_threshold": null,
+        "log_prob_threshold": -1.0,
+        "no_speech_threshold": 0.6,
+        "patience": 1.0,
+        "temperatures": [
+          0.0,
+          0.2,
+          0.4,
+          0.6,
+          0.8,
+          1.0
+        ],
+        "vad": "silero (built-in)",
+        "word_timestamps": true
+      },
+      "load": {
+        "compute_type": "int8",
+        "cpu_threads": 4,
+        "device": "cpu"
+      },
+      "mode": "balanced",
+      "model": {
+        "display_name": "Custom model (small-int8)",
+        "id": null,
+        "path": "/Users/example/Models/faster-whisper-small",
+        "revision": null
+      },
+      "warnings": []
+    },
+    "elapsed_seconds": 4.072,
+    "error": null,
+    "finished_at": "2026-10-15T04:40:30.929Z",
+    "id": "9da29a65e644494a8d23f82edf20c192",
+    "kind": "transcribe",
+    "mode": "balanced",
+    "options": {
+      "backend": "faster-whisper",
+      "chunk_seconds": 600.0,
+      "language": null,
+      "mode": "balanced",
+      "model_id": null,
+      "model_path": "/Users/example/Models/faster-whisper-small",
+      "vad": true
+    },
+    "project_id": "3bb390ef217242898b976d7fd881b2da",
+    "project_title": "JFK",
+    "stages": [
+      {
+        "detail": null,
+        "elapsed_seconds": 0.0,
+        "eta_seconds": null,
+        "finished_at": "2026-10-15T04:40:26.997Z",
+        "fraction": null,
+        "label": "Checking source",
+        "progress": null,
+        "stage": "prepare",
+        "started_at": "2026-10-15T04:40:26.997Z",
+        "status": "completed"
+      },
+      {
+        "detail": null,
+        "elapsed_seconds": 0.058,
+        "eta_seconds": null,
+        "finished_at": "2026-10-15T04:40:27.056Z",
+        "fraction": 1.0,
+        "label": "Extracting audio",
+        "progress": {
+          "done": 11.0,
+          "total": 11.0,
+          "unit": "seconds"
+        },
+        "stage": "extract",
+        "started_at": "2026-10-15T04:40:26.998Z",
+        "status": "completed"
+      },
+      {
+        "detail": "1 chunk(s)",
+        "elapsed_seconds": 0.0,
+        "eta_seconds": null,
+        "finished_at": "2026-10-15T04:40:27.056Z",
+        "fraction": 1.0,
+        "label": "Analyzing audio",
+        "progress": {
+          "done": 11.0,
+          "total": 11.0,
+          "unit": "seconds"
+        },
+        "stage": "analyze",
+        "started_at": "2026-10-15T04:40:27.056Z",
+        "status": "completed"
+      },
+      {
+        "detail": "Custom model (small-int8) on faster-whisper (CPU)",
+        "elapsed_seconds": 0.426,
+        "eta_seconds": null,
+        "finished_at": "2026-10-15T04:40:27.482Z",
+        "fraction": null,
+        "label": "Loading model",
+        "progress": null,
+        "stage": "load_model",
+        "started_at": "2026-10-15T04:40:27.056Z",
+        "status": "completed"
+      },
+      {
+        "detail": "1 of 1 chunk(s) done",
+        "elapsed_seconds": 3.445,
+        "eta_seconds": null,
+        "finished_at": "2026-10-15T04:40:30.927Z",
+        "fraction": 1.0,
+        "label": "Transcribing",
+        "progress": {
+          "done": 11.0,
+          "total": 11.0,
+          "unit": "seconds"
+        },
+        "stage": "transcribe",
+        "started_at": "2026-10-15T04:40:27.482Z",
+        "status": "completed"
+      },
+      {
+        "detail": "2 segment(s)",
+        "elapsed_seconds": 0.001,
+        "eta_seconds": null,
+        "finished_at": "2026-10-15T04:40:30.929Z",
+        "fraction": null,
+        "label": "Saving transcript",
+        "progress": null,
+        "stage": "finalize",
+        "started_at": "2026-10-15T04:40:30.928Z",
+        "status": "completed"
+      }
+    ],
+    "started_at": "2026-10-15T04:40:26.857Z",
+    "status": "completed",
+    "updated_at": "2026-10-15T04:40:30.929Z"
+  }
+}

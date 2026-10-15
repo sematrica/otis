@@ -1,0 +1,553 @@
+"""Data access for projects, jobs, stages, chunks and transcripts.
+
+Functions return plain dicts shaped for the RPC protocol
+(see docs/ENGINE_PROTOCOL.md).
+"""
+
+from __future__ import annotations
+
+import json
+from typing import Any, Iterable
+
+from ..asr.merge import MergedSegment
+from ..audio.chunking import Chunk
+from ..errors import NotFound
+from ..media.probe import MediaInfo
+from ..util.ids import new_id, parse_utc, utc_now
+from .db import Database
+
+PROJECT_STATUSES = ("new", "queued", "processing", "ready", "failed", "cancelled", "interrupted")
+ACTIVE_JOB_STATUSES = ("queued", "running")
+RESUMABLE_JOB_STATUSES = ("failed", "cancelled", "interrupted")
+
+#: Pipeline stages in execution order with user-facing labels.
+STAGES: list[tuple[str, str]] = [
+    ("prepare", "Checking source"),
+    ("extract", "Extracting audio"),
+    ("analyze", "Analyzing audio"),
+    ("load_model", "Loading model"),
+    ("transcribe", "Transcribing"),
+    ("finalize", "Saving transcript"),
+]
+STAGE_LABELS = dict(STAGES)
+
+#: ETA is shown only after this much measured work in the current attempt.
+_ETA_MIN_FRACTION = 0.03
+_ETA_MIN_SECONDS = 10.0
+
+
+# --------------------------------------------------------------------------- projects
+
+
+def _project_row_to_dict(row, segment_count: int | None = None) -> dict[str, Any]:
+    return {
+        "id": row["id"],
+        "title": row["title"],
+        "status": row["status"],
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+        "source": {
+            "kind": row["source_kind"],
+            "path": row["source_path"],
+            "url": row["source_url"],
+            "size_bytes": row["source_size"],
+            "mtime_ns": row["source_mtime_ns"],
+        },
+        "duration": row["duration"],
+        "has_video": bool(row["has_video"]),
+        "language": row["language"],
+        "media": json.loads(row["media_info_json"]),
+        "last_job_id": row["last_job_id"],
+        "segment_count": segment_count if segment_count is not None else 0,
+    }
+
+
+def create_project(db: Database, media: MediaInfo, title: str) -> dict[str, Any]:
+    project_id = new_id()
+    now = utc_now()
+    with db.transaction() as conn:
+        conn.execute(
+            """INSERT INTO projects (id, title, created_at, updated_at, status, source_kind, source_path,
+                   source_size, source_mtime_ns, media_info_json, duration, has_video)
+               VALUES (?, ?, ?, ?, 'new', 'file', ?, ?, ?, ?, ?, ?)""",
+            (
+                project_id,
+                title,
+                now,
+                now,
+                media.path,
+                media.size_bytes,
+                media.mtime_ns,
+                json.dumps(media.to_dict()),
+                media.duration,
+                int(media.has_video),
+            ),
+        )
+    return get_project(db, project_id)
+
+
+def get_project(db: Database, project_id: str) -> dict[str, Any]:
+    row = db.query_one("SELECT * FROM projects WHERE id = ?", (project_id,))
+    if row is None:
+        raise NotFound("Project not found.", data={"project_id": project_id})
+    count = db.query_one("SELECT COUNT(*) FROM segments WHERE project_id = ?", (project_id,))[0]
+    return _project_row_to_dict(row, count)
+
+
+def list_projects(db: Database, status: str | None = None, limit: int | None = None) -> list[dict[str, Any]]:
+    sql = (
+        "SELECT p.*, (SELECT COUNT(*) FROM segments s WHERE s.project_id = p.id) AS segment_count "
+        "FROM projects p"
+    )
+    params: list[Any] = []
+    if status:
+        sql += " WHERE p.status = ?"
+        params.append(status)
+    sql += " ORDER BY p.updated_at DESC"
+    if limit:
+        sql += " LIMIT ?"
+        params.append(int(limit))
+    return [_project_row_to_dict(r, r["segment_count"]) for r in db.query(sql, params)]
+
+
+def rename_project(db: Database, project_id: str, title: str) -> dict[str, Any]:
+    with db.transaction() as conn:
+        cur = conn.execute("UPDATE projects SET title = ?, updated_at = ? WHERE id = ?", (title, utc_now(), project_id))
+        if cur.rowcount == 0:
+            raise NotFound("Project not found.", data={"project_id": project_id})
+    return get_project(db, project_id)
+
+
+def set_project_status(conn, project_id: str, status: str, *, language: str | None = None, job_id: str | None = None) -> None:
+    assert status in PROJECT_STATUSES
+    sets = ["status = ?", "updated_at = ?"]
+    params: list[Any] = [status, utc_now()]
+    if language is not None:
+        sets.append("language = ?")
+        params.append(language)
+    if job_id is not None:
+        sets.append("last_job_id = ?")
+        params.append(job_id)
+    params.append(project_id)
+    conn.execute(f"UPDATE projects SET {', '.join(sets)} WHERE id = ?", params)
+
+
+def delete_project(db: Database, project_id: str) -> list[str]:
+    """Deletes the project (cascades to jobs and transcript). Returns the ids of
+    the deleted jobs so the caller can remove their working directories."""
+    with db.transaction() as conn:
+        job_ids = [r[0] for r in conn.execute("SELECT id FROM jobs WHERE project_id = ?", (project_id,))]
+        cur = conn.execute("DELETE FROM projects WHERE id = ?", (project_id,))
+        if cur.rowcount == 0:
+            raise NotFound("Project not found.", data={"project_id": project_id})
+    return job_ids
+
+
+# --------------------------------------------------------------------------- jobs
+
+
+def create_job(db: Database, project_id: str, mode: str, options: dict[str, Any]) -> dict[str, Any]:
+    job_id = new_id()
+    now = utc_now()
+    with db.transaction() as conn:
+        if conn.execute("SELECT 1 FROM projects WHERE id = ?", (project_id,)).fetchone() is None:
+            raise NotFound("Project not found.", data={"project_id": project_id})
+        conn.execute(
+            """INSERT INTO jobs (id, project_id, status, mode, options_json, created_at, updated_at)
+               VALUES (?, ?, 'queued', ?, ?, ?, ?)""",
+            (job_id, project_id, mode, json.dumps(options), now, now),
+        )
+        for ordinal, (stage, _label) in enumerate(STAGES):
+            conn.execute(
+                "INSERT INTO job_stages (job_id, stage, ordinal, status) VALUES (?, ?, ?, 'pending')",
+                (job_id, stage, ordinal),
+            )
+        set_project_status(conn, project_id, "queued", job_id=job_id)
+    return get_job(db, job_id)
+
+
+def _elapsed(started: str | None, finished: str | None) -> float | None:
+    start = parse_utc(started)
+    if start is None:
+        return None
+    end = parse_utc(finished) or parse_utc(utc_now())
+    return max(0.0, (end - start).total_seconds())
+
+
+def _stage_dict(row, job_status: str) -> dict[str, Any]:
+    done, total = row["progress_done"], row["progress_total"]
+    fraction = None
+    if done is not None and total:
+        fraction = max(0.0, min(1.0, done / total))
+    elapsed = _elapsed(row["started_at"], row["finished_at"])
+    eta = None
+    if row["status"] == "running" and job_status == "running" and fraction is not None and elapsed:
+        baseline = row["baseline_done"] or 0.0
+        measured = (done or 0.0) - baseline
+        if total and measured / total >= _ETA_MIN_FRACTION and elapsed >= _ETA_MIN_SECONDS and measured > 0:
+            rate = measured / elapsed
+            eta = max(0.0, (total - done) / rate)
+    return {
+        "stage": row["stage"],
+        "label": STAGE_LABELS.get(row["stage"], row["stage"]),
+        "status": row["status"],
+        "started_at": row["started_at"],
+        "finished_at": row["finished_at"],
+        "elapsed_seconds": elapsed,
+        "progress": {"done": done, "total": total, "unit": row["progress_unit"]} if done is not None else None,
+        "fraction": fraction,
+        "eta_seconds": eta,
+        "detail": row["detail"],
+    }
+
+
+def _job_row_to_dict(db: Database, row) -> dict[str, Any]:
+    stages = db.query("SELECT * FROM job_stages WHERE job_id = ? ORDER BY ordinal", (row["id"],))
+    project = db.query_one("SELECT title FROM projects WHERE id = ?", (row["project_id"],))
+    return {
+        "id": row["id"],
+        "project_id": row["project_id"],
+        "project_title": project["title"] if project else None,
+        "kind": row["kind"],
+        "status": row["status"],
+        "mode": row["mode"],
+        "options": json.loads(row["options_json"]),
+        "effective": json.loads(row["effective_json"]) if row["effective_json"] else None,
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+        "started_at": row["started_at"],
+        "finished_at": row["finished_at"],
+        "elapsed_seconds": _elapsed(row["started_at"], row["finished_at"]),
+        "attempt": row["attempt"],
+        "current_stage": row["current_stage"],
+        "cancel_requested": bool(row["cancel_requested"]),
+        "error": {"code": row["error_code"], "message": row["error_message"]} if row["error_code"] else None,
+        "stages": [_stage_dict(s, row["status"]) for s in stages],
+    }
+
+
+def get_job(db: Database, job_id: str) -> dict[str, Any]:
+    row = db.query_one("SELECT * FROM jobs WHERE id = ?", (job_id,))
+    if row is None:
+        raise NotFound("Job not found.", data={"job_id": job_id})
+    return _job_row_to_dict(db, row)
+
+
+def get_job_row(db: Database, job_id: str):
+    row = db.query_one("SELECT * FROM jobs WHERE id = ?", (job_id,))
+    if row is None:
+        raise NotFound("Job not found.", data={"job_id": job_id})
+    return row
+
+
+def list_jobs(
+    db: Database, *, statuses: Iterable[str] | None = None, project_id: str | None = None, limit: int = 100
+) -> list[dict[str, Any]]:
+    sql = "SELECT * FROM jobs"
+    clauses, params = [], []
+    if statuses:
+        statuses = list(statuses)
+        clauses.append(f"status IN ({','.join('?' * len(statuses))})")
+        params.extend(statuses)
+    if project_id:
+        clauses.append("project_id = ?")
+        params.append(project_id)
+    if clauses:
+        sql += " WHERE " + " AND ".join(clauses)
+    sql += " ORDER BY created_at DESC LIMIT ?"
+    params.append(int(limit))
+    return [_job_row_to_dict(db, r) for r in db.query(sql, params)]
+
+
+def next_queued_job(db: Database) -> str | None:
+    row = db.query_one("SELECT id FROM jobs WHERE status = 'queued' ORDER BY created_at ASC LIMIT 1")
+    return row["id"] if row else None
+
+
+def mark_job_running(db: Database, job_id: str, pid: int) -> int:
+    now = utc_now()
+    with db.transaction() as conn:
+        row = conn.execute("SELECT attempt, project_id, started_at FROM jobs WHERE id = ?", (job_id,)).fetchone()
+        attempt = row["attempt"] + 1
+        conn.execute(
+            """UPDATE jobs SET status = 'running', worker_pid = ?, attempt = ?, started_at = ?,
+                   finished_at = NULL, updated_at = ?, error_code = NULL, error_message = NULL
+               WHERE id = ?""",
+            (pid, attempt, now, now, job_id),
+        )
+        set_project_status(conn, row["project_id"], "processing")
+    return attempt
+
+
+def finish_job(
+    db: Database,
+    job_id: str,
+    status: str,
+    *,
+    error_code: str | None = None,
+    error_message: str | None = None,
+) -> None:
+    assert status in ("completed", "failed", "cancelled", "interrupted")
+    now = utc_now()
+    project_status = {"completed": "ready", "failed": "failed", "cancelled": "cancelled", "interrupted": "interrupted"}[status]
+    with db.transaction() as conn:
+        row = conn.execute("SELECT project_id, status FROM jobs WHERE id = ?", (job_id,)).fetchone()
+        if row is None:
+            return
+        conn.execute(
+            """UPDATE jobs SET status = ?, finished_at = ?, updated_at = ?, worker_pid = NULL,
+                   error_code = ?, error_message = ?
+               WHERE id = ?""",
+            (status, now, now, error_code, error_message, job_id),
+        )
+        stage_status = {"completed": None, "failed": "failed", "cancelled": "cancelled", "interrupted": "cancelled"}[status]
+        if stage_status:
+            conn.execute(
+                "UPDATE job_stages SET status = ?, finished_at = ? WHERE job_id = ? AND status = 'running'",
+                (stage_status, now, job_id),
+            )
+        # A project that already has a transcript from an earlier job stays usable.
+        has_transcript = conn.execute("SELECT 1 FROM segments WHERE project_id = ? LIMIT 1", (row["project_id"],)).fetchone()
+        if status != "completed" and has_transcript:
+            project_status = "ready"
+        set_project_status(conn, row["project_id"], project_status)
+
+
+def request_cancel(db: Database, job_id: str) -> None:
+    db.execute("UPDATE jobs SET cancel_requested = 1, updated_at = ? WHERE id = ?", (utc_now(), job_id))
+
+
+def requeue_job(db: Database, job_id: str) -> None:
+    now = utc_now()
+    with db.transaction() as conn:
+        row = conn.execute("SELECT project_id FROM jobs WHERE id = ?", (job_id,)).fetchone()
+        conn.execute(
+            """UPDATE jobs SET status = 'queued', cancel_requested = 0, error_code = NULL,
+                   error_message = NULL, finished_at = NULL, updated_at = ? WHERE id = ?""",
+            (now, job_id),
+        )
+        conn.execute(
+            "UPDATE job_stages SET status = 'pending' WHERE job_id = ? AND status IN ('failed','cancelled','running')",
+            (job_id,),
+        )
+        set_project_status(conn, row["project_id"], "queued", job_id=job_id)
+
+
+def set_effective(db: Database, job_id: str, effective: dict[str, Any]) -> None:
+    db.execute("UPDATE jobs SET effective_json = ?, updated_at = ? WHERE id = ?", (json.dumps(effective), utc_now(), job_id))
+
+
+# --------------------------------------------------------------------------- stages
+
+
+def start_stage(db: Database, job_id: str, stage: str, *, unit: str | None = None, total: float | None = None,
+                done: float | None = None, detail: str | None = None) -> None:
+    now = utc_now()
+    with db.transaction() as conn:
+        conn.execute(
+            """UPDATE job_stages SET status = 'running', started_at = ?, finished_at = NULL,
+                   progress_unit = ?, progress_total = ?, progress_done = ?, baseline_done = ?, detail = ?
+               WHERE job_id = ? AND stage = ?""",
+            (now, unit, total, done, done or 0.0, detail, job_id, stage),
+        )
+        conn.execute("UPDATE jobs SET current_stage = ?, updated_at = ? WHERE id = ?", (stage, now, job_id))
+
+
+def update_stage(db: Database, job_id: str, stage: str, *, done: float | None = None, total: float | None = None,
+                 detail: str | None = None) -> None:
+    sets, params = [], []
+    if done is not None:
+        sets.append("progress_done = ?")
+        params.append(done)
+    if total is not None:
+        sets.append("progress_total = ?")
+        params.append(total)
+    if detail is not None:
+        sets.append("detail = ?")
+        params.append(detail)
+    if not sets:
+        return
+    params.extend([job_id, stage])
+    db.execute(f"UPDATE job_stages SET {', '.join(sets)} WHERE job_id = ? AND stage = ?", params)
+
+
+def finish_stage(db: Database, job_id: str, stage: str, status: str = "completed", detail: str | None = None) -> None:
+    now = utc_now()
+    if detail is None:
+        db.execute(
+            "UPDATE job_stages SET status = ?, finished_at = ? WHERE job_id = ? AND stage = ?",
+            (status, now, job_id, stage),
+        )
+    else:
+        db.execute(
+            "UPDATE job_stages SET status = ?, finished_at = ?, detail = ? WHERE job_id = ? AND stage = ?",
+            (status, now, detail, job_id, stage),
+        )
+
+
+# --------------------------------------------------------------------------- audio & chunks
+
+
+def save_audio_asset(db: Database, job_id: str, path: str, sample_rate: int, samples: int, duration: float,
+                     source_size: int, source_mtime_ns: int, report: dict[str, Any]) -> None:
+    db.execute(
+        """INSERT OR REPLACE INTO audio_assets
+               (job_id, path, sample_rate, samples, duration, source_size, source_mtime_ns, report_json, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (job_id, path, sample_rate, samples, duration, source_size, source_mtime_ns, json.dumps(report), utc_now()),
+    )
+
+
+def get_audio_asset(db: Database, job_id: str):
+    return db.query_one("SELECT * FROM audio_assets WHERE job_id = ?", (job_id,))
+
+
+def delete_audio_asset(db: Database, job_id: str) -> None:
+    db.execute("DELETE FROM audio_assets WHERE job_id = ?", (job_id,))
+
+
+def save_chunk_plan(db: Database, job_id: str, chunks: list[Chunk]) -> None:
+    with db.transaction() as conn:
+        conn.execute("DELETE FROM chunks WHERE job_id = ?", (job_id,))
+        conn.executemany(
+            """INSERT INTO chunks (job_id, idx, owned_start, owned_end, audio_start, audio_end, cut_energy_db, status)
+               VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')""",
+            [(job_id, c.index, c.owned_start, c.owned_end, c.audio_start, c.audio_end, c.cut_energy_db) for c in chunks],
+        )
+
+
+def load_chunks(db: Database, job_id: str) -> list[tuple[Chunk, Any]]:
+    rows = db.query("SELECT * FROM chunks WHERE job_id = ? ORDER BY idx", (job_id,))
+    return [
+        (
+            Chunk(r["idx"], r["owned_start"], r["owned_end"], r["audio_start"], r["audio_end"], r["cut_energy_db"]),
+            r,
+        )
+        for r in rows
+    ]
+
+
+def complete_chunk(db: Database, job_id: str, index: int, result: dict[str, Any], processing_seconds: float) -> None:
+    db.execute(
+        """UPDATE chunks SET status = 'completed', result_json = ?, language = ?, language_probability = ?,
+               processing_seconds = ?, completed_at = ?
+           WHERE job_id = ? AND idx = ?""",
+        (
+            json.dumps(result),
+            result.get("language"),
+            result.get("language_probability"),
+            processing_seconds,
+            utc_now(),
+            job_id,
+            index,
+        ),
+    )
+
+
+# --------------------------------------------------------------------------- transcript
+
+
+def replace_transcript(db: Database, project_id: str, job_id: str, segments: list[MergedSegment],
+                       language: str | None) -> int:
+    """Atomically replace the project's transcript with a new recognition result."""
+    with db.transaction() as conn:
+        conn.execute("DELETE FROM segments WHERE project_id = ?", (project_id,))
+        for ordinal, seg in enumerate(segments):
+            cur = conn.execute(
+                """INSERT INTO segments (project_id, job_id, ordinal, start, end, original_text, text, language,
+                       avg_logprob, no_speech_prob, compression_ratio, temperature, chunk_index, flags_json)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    project_id,
+                    job_id,
+                    ordinal,
+                    seg.start,
+                    seg.end,
+                    seg.text,
+                    seg.text,
+                    seg.language,
+                    seg.avg_logprob,
+                    seg.no_speech_prob,
+                    seg.compression_ratio,
+                    seg.temperature,
+                    seg.chunk_index,
+                    json.dumps(seg.flags),
+                ),
+            )
+            segment_id = cur.lastrowid
+            if seg.words:
+                conn.executemany(
+                    """INSERT INTO words (segment_id, ordinal, start, end, text, probability, timing_source)
+                       VALUES (?, ?, ?, ?, ?, ?, 'whisper')""",
+                    [(segment_id, i, w.start, w.end, w.text, w.probability) for i, w in enumerate(seg.words)],
+                )
+        conn.execute(
+            "UPDATE projects SET language = ?, updated_at = ? WHERE id = ?", (language, utc_now(), project_id)
+        )
+    return len(segments)
+
+
+def get_transcript(db: Database, project_id: str, include_words: bool = False) -> dict[str, Any]:
+    project = get_project(db, project_id)
+    rows = db.query("SELECT * FROM segments WHERE project_id = ? ORDER BY ordinal", (project_id,))
+    words_by_segment: dict[int, list[dict[str, Any]]] = {}
+    if include_words and rows:
+        for w in db.query(
+            """SELECT w.* FROM words w JOIN segments s ON s.id = w.segment_id
+               WHERE s.project_id = ? ORDER BY w.segment_id, w.ordinal""",
+            (project_id,),
+        ):
+            words_by_segment.setdefault(w["segment_id"], []).append(
+                {"start": w["start"], "end": w["end"], "text": w["text"], "probability": w["probability"],
+                 "timing_source": w["timing_source"]}
+            )
+    segments = []
+    for r in rows:
+        seg = {
+            "id": r["id"],
+            "ordinal": r["ordinal"],
+            "start": r["start"],
+            "end": r["end"],
+            "text": r["text"],
+            "original_text": r["original_text"],
+            "language": r["language"],
+            "avg_logprob": r["avg_logprob"],
+            "no_speech_prob": r["no_speech_prob"],
+            "compression_ratio": r["compression_ratio"],
+            "chunk_index": r["chunk_index"],
+            "speaker_id": r["speaker_id"],
+            "flags": json.loads(r["flags_json"]),
+        }
+        if include_words:
+            seg["words"] = words_by_segment.get(r["id"], [])
+        segments.append(seg)
+    # Settings of the job that produced this transcript (not necessarily the
+    # project's latest job, which may have failed).
+    transcript_job_id = rows[0]["job_id"] if rows else None
+    effective = None
+    if transcript_job_id:
+        job_row = db.query_one("SELECT effective_json FROM jobs WHERE id = ?", (transcript_job_id,))
+        if job_row and job_row["effective_json"]:
+            effective = json.loads(job_row["effective_json"])
+    return {
+        "project_id": project_id,
+        "language": project["language"],
+        "job_id": transcript_job_id,
+        "effective": effective,
+        "segments": segments,
+    }
+
+
+# --------------------------------------------------------------------------- settings
+
+
+def get_setting(db: Database, key: str, default: Any = None) -> Any:
+    row = db.query_one("SELECT value_json FROM settings WHERE key = ?", (key,))
+    return json.loads(row["value_json"]) if row else default
+
+
+def set_setting(db: Database, key: str, value: Any) -> None:
+    db.execute(
+        "INSERT INTO settings (key, value_json) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json",
+        (key, json.dumps(value)),
+    )

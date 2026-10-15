@@ -1,0 +1,47 @@
+{
+  "id": 8,
+  "result": {
+    "created_at": "2026-10-15T04:40:26.852Z",
+    "duration": 11.0,
+    "has_video": false,
+    "id": "3bb390ef217242898b976d7fd881b2da",
+    "language": null,
+    "last_job_id": null,
+    "media": {
+      "audio_streams": [
+        {
+          "channels": 1,
+          "codec": "pcm_s16le",
+          "duration": 11.0,
+          "index": 0,
+          "is_default": false,
+          "language": null,
+          "sample_rate": 16000
+        }
+      ],
+      "bit_rate": 256056,
+      "duration": 11.0,
+      "format_long_name": "WAV / WAVE (Waveform Audio)",
+      "format_name": "wav",
+      "has_audio": true,
+      "has_video": false,
+      "mtime_ns": 1792037526637908643,
+      "path": "/Users/example/verbatim/engine/tests/corpus/jfk.wav",
+      "selected_audio_stream": 0,
+      "size_bytes": 352078,
+      "start_time": 0.0,
+      "video_streams": []
+    },
+    "segment_count": 0,
+    "source": {
+      "kind": "file",
+      "mtime_ns": 1792037526637908643,
+      "path": "/Users/example/verbatim/engine/tests/corpus/jfk.wav",
+      "size_bytes": 352078,
+      "url": null
+    },
+    "status": "new",
+    "title": "JFK",
+    "updated_at": "2026-10-15T04:40:26.852Z"
+  }
+}

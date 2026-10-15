@@ -1,0 +1,55 @@
+{
+  "id": 1,
+  "result": {
+    "backends": [
+      {
+        "available": true,
+        "capabilities": {
+          "acceleration": "CTranslate2 on CPU",
+          "beam_search": true,
+          "builtin_vad": true,
+          "device": "cpu",
+          "language_detection": true,
+          "word_timestamps": true
+        },
+        "display_name": "faster-whisper (CPU)",
+        "name": "faster-whisper",
+        "unavailable_reason": null
+      },
+      {
+        "available": false,
+        "capabilities": {
+          "acceleration": "MLX on Metal",
+          "beam_search": false,
+          "builtin_vad": false,
+          "device": "gpu",
+          "language_detection": true,
+          "word_timestamps": true
+        },
+        "display_name": "MLX (Apple GPU)",
+        "name": "mlx",
+        "unavailable_reason": "MLX requires a Mac with Apple Silicon."
+      }
+    ],
+    "data_dir": "/Users/example/Library/Application Support/Verbatim",
+    "db_path": "/Users/example/Library/Application Support/Verbatim/verbatim.sqlite3",
+    "hardware": {
+      "apple_silicon": false,
+      "logical_cpus": 4,
+      "machine": "x86_64",
+      "macos_version": null,
+      "memory_bytes": 16874930176,
+      "performance_cores": 4,
+      "platform": "linux",
+      "python": "3.12.3"
+    },
+    "pid": 4211,
+    "protocol_version": 1,
+    "python": {
+      "executable": "/Users/example/verbatim/engine/.venv/bin/python3",
+      "version": "3.12.3"
+    },
+    "schema_version": 1,
+    "version": "0.1.0"
+  }
+}

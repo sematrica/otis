@@ -1,0 +1,37 @@
+{
+  "id": 2,
+  "result": {
+    "modes": [
+      {
+        "beam_size": 1,
+        "best_of": 1,
+        "cpu_compute_type": "int8",
+        "description": "Whisper Small with greedy decoding. Quickest; less accurate on difficult audio.",
+        "family": "small",
+        "id": "fast",
+        "label": "Fast",
+        "limitations": ""
+      },
+      {
+        "beam_size": 5,
+        "best_of": 5,
+        "cpu_compute_type": "int8",
+        "description": "Whisper Large-v3 Turbo with beam search where the backend supports it.",
+        "family": "large-v3-turbo",
+        "id": "balanced",
+        "label": "Balanced",
+        "limitations": ""
+      },
+      {
+        "beam_size": 5,
+        "best_of": 5,
+        "cpu_compute_type": "float32",
+        "description": "Whisper Large-v3 with beam search where supported (float32 on the CPU backend).",
+        "family": "large-v3",
+        "id": "maximum",
+        "label": "Maximum Accuracy",
+        "limitations": "Multi-pass verification and targeted re-transcription are not implemented yet; this mode currently runs a single high-accuracy pass."
+      }
+    ]
+  }
+}

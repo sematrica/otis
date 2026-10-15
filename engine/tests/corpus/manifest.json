@@ -1,0 +1,17 @@
+{
+  "description": "Reproducible test corpus. Every sample lists its origin, licence, checksum and verified reference transcript. Synthetic (TTS) samples are generated at test time from the texts in tests/corpus/tts_texts.json and are not representative of real-world accuracy.",
+  "samples": [
+    {
+      "id": "jfk",
+      "file": "jfk.wav",
+      "sha256": "59dfb9a4acb36fe2a2affc14bacbee2920ff435cb13cc314a08c13f66ba7860e",
+      "source": "https://raw.githubusercontent.com/ggerganov/whisper.cpp/master/samples/jfk.wav (excerpt of the 1961 inaugural address of John F. Kennedy)",
+      "license": "Public domain (work of the U.S. federal government)",
+      "language": "en",
+      "speakers": 1,
+      "duration_seconds": 11.0,
+      "reference": "And so, my fellow Americans, ask not what your country can do for you, ask what you can do for your country.",
+      "reference_source": "Text of the address as published by the JFK Presidential Library; punctuation follows that text"
+    }
+  ]
+}
