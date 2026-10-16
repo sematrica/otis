@@ -16,7 +16,7 @@ struct VerbatimApp: App {
         WindowGroup("Verbatim") {
             ContentView()
                 .environmentObject(AppEnvironment.model)
-                .frame(minWidth: 980, minHeight: 620)
+                .frame(minWidth: 1020, minHeight: 620)
         }
         .commands {
             CommandGroup(replacing: .newItem) {}

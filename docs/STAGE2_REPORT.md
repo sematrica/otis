@@ -166,8 +166,10 @@ target Mac has not been measured.
    requires them.
 9. At the smallest window size (980 pt) the three panels' minimum widths did
    not fit, so the transcript's right edge was clipped and its header wrapped
-   letter by letter (seen in the self-test's window snapshot). The panel
-   minimums now fit, and the header puts the model summary on a second line.
+   letter by letter (seen in the self-test's window snapshot). The smallest
+   window is now 1020 pt, the panel minimums fit it (the player keeps the
+   300 pt below which its controls drop the timeline), and the transcript
+   header puts the model summary on a second line.
 
 ## Known limitations
 

@@ -57,13 +57,14 @@ struct ProjectWorkspaceView: View {
                 JobBanner(job: job)
                 Divider()
             }
-            // Minimum widths fit the smallest window (980 pt including the
-            // ~145 pt sidebar) without clipping the transcript.
+            // Minimum widths fit the smallest window (1020 pt including the
+            // ~145 pt sidebar) without clipping the transcript; below ~300 pt
+            // the player's controls drop the timeline.
             HSplitView {
                 SpeakersPanel(workspace: workspace, player: player)
                     .frame(minWidth: 170, idealWidth: 230, maxWidth: 340)
                 PlayerPanel(project: project, workspace: workspace, player: player)
-                    .frame(minWidth: 260, idealWidth: 440)
+                    .frame(minWidth: 300, idealWidth: 440)
                 TranscriptPanel(project: project, workspace: workspace, player: player)
                     .frame(minWidth: 380, idealWidth: 540)
             }
