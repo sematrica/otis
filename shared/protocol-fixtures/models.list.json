@@ -446,7 +446,7 @@
           "float32": 800000000
         },
         "multilingual": false,
-        "notes": "English only. Larger, but less precise than Small in our measurements (about 45 ms word-start error).",
+        "notes": "English only. Larger, but less precise than Small in our measurements (48\u201363 ms word-start error, and more passages rejected). Small is recommended.",
         "parameters": "30M",
         "repo_id": null,
         "required_files": [

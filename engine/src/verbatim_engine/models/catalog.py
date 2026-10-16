@@ -201,7 +201,7 @@ ALIGNMENT_MODELS: tuple[ModelSpec, ...] = (
           "English only. Measured word-start error on synthetic speech: about 35 ms (Whisper alone: about 90 ms)."),
     _nemo("medium", "English word alignment (Conformer-CTC Medium)", "30M", 165_685_608,
           "08cb7b6ebc516a2577c5b152230730ebf5f937507260305ea592c7accd7f899b", int(0.8 * GB),
-          "English only. Larger, but less precise than Small in our measurements (about 45 ms word-start error)."),
+          "English only. Larger, but less precise than Small in our measurements (48–63 ms word-start error, and more passages rejected). Small is recommended."),
     ModelSpec(
         id="alignment/mms-300m",
         backend="onnx",
