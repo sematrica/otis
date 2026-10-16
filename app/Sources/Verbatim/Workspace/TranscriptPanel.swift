@@ -94,17 +94,24 @@ struct TranscriptPanel: View {
     }
 
     private var header: some View {
-        HStack(spacing: 10) {
-            Text("Transcript").font(.headline)
-            if let language = workspace.transcript?.language {
-                Text(language.uppercased()).font(.caption.weight(.semibold))
-                    .padding(.horizontal, 6).padding(.vertical, 1)
-                    .background(Color.secondary.opacity(0.15), in: Capsule())
+        HStack(spacing: 8) {
+            // Title and language never wrap; the model summary below them
+            // truncates first when the panel is narrow.
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 6) {
+                    Text("Transcript").font(.headline)
+                    if let language = workspace.transcript?.language {
+                        Text(language.uppercased()).font(.caption.weight(.semibold))
+                            .padding(.horizontal, 6).padding(.vertical, 1)
+                            .background(Color.secondary.opacity(0.15), in: Capsule())
+                    }
+                }
+                .fixedSize()
+                if let effective = workspace.transcript?.effective {
+                    EffectiveSummary(effective: effective)
+                }
             }
-            if let effective = workspace.transcript?.effective {
-                EffectiveSummary(effective: effective)
-            }
-            Spacer()
+            Spacer(minLength: 4)
             Picker("Show", selection: $workspace.filter) {
                 Text("All").tag(WorkspaceModel.Filter.all)
                 Text(workspace.speaker(workspace.focusedSpeakerID)?.displayName ?? "Selected speaker")
@@ -112,15 +119,15 @@ struct TranscriptPanel: View {
                 Text("Needs review (\(workspace.reviewCount))").tag(WorkspaceModel.Filter.review)
             }
             .labelsHidden()
-            .frame(width: 170)
+            .frame(width: 130)
             .help("Show all segments, one speaker's, or the ones flagged for review")
             Toggle(isOn: $follow) { Image(systemName: "arrow.down.to.line") }
                 .toggleStyle(.button)
                 .help("Follow playback")
             HistoryButtons(workspace: workspace)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
     }
 
     private func actions(for segment: Segment) -> SegmentActions {

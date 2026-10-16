@@ -292,8 +292,9 @@ final class AppModel: ObservableObject {
         do { upsert(try await client.renameProject(project.id, title: trimmed)) } catch { report(error, title: "Could not rename") }
     }
 
+    /// The transcript with its words, as the workspace loads it.
     func transcript(for project: Project) async throws -> Transcript {
-        try await client.transcript(projectId: project.id)
+        try await client.transcript(projectId: project.id, includeWords: true)
     }
 
     func exportText(_ project: Project) async {

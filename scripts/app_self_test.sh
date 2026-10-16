@@ -70,6 +70,7 @@ optional = set() if speakers else {"diarize", "align"}  # skipped when their mod
 for entry in result["stages"]:
     stage, status = entry.split(":")
     assert status == "completed" or (stage in optional and status == "skipped"), result["stages"]
+assert result["words"] > 0, result  # word timings reach the app (seek and highlight need them)
 if speakers:
     assert len(result["speakers"]) == speakers, result["speakers"]
     assert result["aligned_words"] >= 0.7 * result["words"], result

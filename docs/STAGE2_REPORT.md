@@ -73,6 +73,31 @@ differs slightly between CPU builds, so the word count does too). Words that
 fall into overlapping speech in the reference are not scored. In all three
 runs every word of the real conversation was force-aligned.
 
+### Do the review flags point at the wrong speaker labels?
+
+`engine/scripts/evaluate_speaker_review.py` runs the full pipeline on every
+annotated real recording of the corpus (the 30 s call and 12 AMI excerpts; two
+AMI excerpts yield no recognised speech) and checks each word's speaker
+against the reference.
+
+| Words | Count | In a segment flagged for review |
+|-------|------:|--------------------------------:|
+| Right speaker | 442 | 58 (13 %) |
+| Wrong speaker | 40 | 1 (2.5 %) |
+| Reference ambiguous (overlap or silence) | 115 | 52 (45 %) |
+
+The flags do what they describe: they mark overlapping speech, thin evidence
+and uncertain changes, and they concentrate on passages the reference itself
+marks as overlapped. They do **not** find the main kind of error measured
+here: 37 of the 40 wrong words come from two far-field AMI excerpts in which
+both people were found but their voices were confused, with full coverage and
+agreement and only a slightly smaller voice margin than correct words. Such
+confident confusions need the user's review of the speaker list (play each
+speaker's first segment; merge or reassign), not a passage flag. The
+"speaker change" flag fired on 12 of the 14 words at speaker changes; none of
+those words was wrong, and 8 of them lie in overlapping speech. With so few
+errors to learn from, the thresholds were left unchanged.
+
 ### Word timestamps (synthetic speech with exact word times)
 
 Benchmark (`engine/scripts/benchmark_word_timing.py`, GitHub Actions Linux):
@@ -135,6 +160,14 @@ target Mac has not been measured.
 7. Engine shutdown could close the database while a worker's monitor thread
    was still recording the job's outcome (seen once on macOS CI as a
    background-thread exception). Shutdown now waits for that thread.
+8. The packaged-app self-test loaded the transcript without its words, so its
+   "≥ 70 % of words aligned" check compared 0 with 0 and passed vacuously. The
+   workspace itself always loaded words; the self-test now does too and
+   requires them.
+9. At the smallest window size (980 pt) the three panels' minimum widths did
+   not fit, so the transcript's right edge was clipped and its header wrapped
+   letter by letter (seen in the self-test's window snapshot). The panel
+   minimums now fit, and the header puts the model summary on a second line.
 
 ## Known limitations
 
@@ -145,7 +178,10 @@ target Mac has not been measured.
   but **non-commercial** (MMS, CC BY-NC 4.0); without a suitable model, word
   times come from Whisper and the job records why. Boundary parameters were
   fitted on synthetic speech.
-* Uncertainty thresholds are heuristics, not calibrated probabilities.
+* Uncertainty flags are heuristics, not calibrated probabilities. On the real
+  recordings they flagged 1 of 40 wrong-speaker words: confident confusions of
+  two voices (far-field audio) are not flagged, and speaker changes in
+  conversation are flagged even when right.
 * Text edits re-time new words by interpolation, not by re-alignment.
 * Peak memory and speed on the target M2 Pro are not measured; diarization runs
   on the CPU (0.10× real time on 4 vCPU here).
@@ -170,7 +206,10 @@ and press **Transcribe**.
 ## Recommended next steps (Stage 3)
 
 1. Quality analysis on top of the Stage 2 evidence: combine Whisper confidence,
-   alignment scores and speaker uncertainty into review priorities.
+   alignment scores and speaker uncertainty into review priorities, and add a
+   recording-level warning when speakers are hard to tell apart (the confident
+   voice confusions above), calibrated on more annotated recordings with
+   `evaluate_speaker_review.py`.
 2. Targeted re-transcription of flagged passages with padding, and re-alignment
    of edited text.
 3. Measure memory and speed on an M2 Pro; consider CoreML/MPS for the speaker

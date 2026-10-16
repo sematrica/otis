@@ -77,6 +77,8 @@ VERBATIM_TEST_DIARIZATION_DIR=/path/to/models/diarization/pyannote-wespeaker \
 VERBATIM_TEST_ALIGNMENT_DIR=/path/to/models/alignment/en-conformer-small \
 VERBATIM_TEST_SPEAKER_CORPUS=/tmp/speakers uv run pytest -m model
 uv run python scripts/benchmark_word_timing.py --whisper … --aligner nemo:…   # word-time accuracy
+uv run python scripts/evaluate_speaker_review.py --whisper … --diarization … \
+    --alignment … --corpus /tmp/speakers                       # do review flags find wrong speakers?
 cd ../app && swift test                                        # macOS only
 ```
 
