@@ -1,8 +1,9 @@
 # Verbatim — Architecture
 
-Status: **Stage 1 (Foundation)**. This document records the selected libraries,
-their verified compatibility, model requirements, and known risks. Anything
-not yet verified is marked as such.
+Status: **Stage 2 (Speaker Intelligence)** on top of Stage 1 (Foundation).
+This document records the selected libraries, their verified compatibility,
+model requirements, and known risks. Anything not yet verified is marked as
+such. Measured results are in `docs/STAGE1_REPORT.md` and `docs/STAGE2_REPORT.md`.
 
 ## 1. Goals that drive the design
 
@@ -22,11 +23,14 @@ not yet verified is marked as such.
 └──────────────────────────────────────────────────────────────────────────────────────────┼─────┘
                                                                                            ▼
                     verbatim-engine serve   (Python; long-lived; imports no ML libraries)
-                      ├─ SQLite database (WAL)      projects · jobs · stages · chunks · segments · words
+                      ├─ SQLite database (WAL)      projects · jobs · stages · chunks · segments · words ·
+                      │                              speakers · original transcripts · edit history
                       ├─ Model Manager             catalog, explicit downloads, deletion, storage location
-                      ├─ Export Manager            TXT (Stage 1)
+                      ├─ Transcript Editor         corrections with undo/redo (engine side)
+                      ├─ Export Manager            TXT with speaker turns
                       └─ Job Manager ──spawns──▶ verbatim-engine worker --job <id>   (one at a time)
-                                                   extract → plan → load model → transcribe chunks → finalize
+                                                   extract → plan → load model → transcribe chunks →
+                                                   (unload Whisper) → diarize → align → finalize
                                                    (exits after each job, releasing all model memory)
 ```
 
@@ -50,15 +54,15 @@ timeout; writes are short transactions.
 
 | # | Component | Stage | Location |
 |---|-----------|-------|----------|
-| 1 | Media Import Manager | 1 | `engine/src/verbatim_engine/media/` (probe + validation), `app/Sources/Verbatim/Views/ImportView.swift` |
-| 2 | Audio Processing Engine | 1 | `engine/src/verbatim_engine/audio/` (decode → 16 kHz mono WAV, chunk planner, WAV reader) |
+| 1 | Media Import Manager | 1 | `engine/src/verbatim_engine/media/` (probe + validation), `app/Sources/Verbatim/Views/LibraryView.swift` |
+| 2 | Audio Processing Engine | 1 | `engine/src/verbatim_engine/audio/` (decode → 16 kHz mono WAV, chunk planner, WAV reader, level normalisation) |
 | 3 | Speech Recognition Engine | 1 | `engine/src/verbatim_engine/asr/` (backend protocol, faster-whisper, mlx-whisper, merge) |
-| 4 | Speaker Diarization Engine | 2 | `engine/src/verbatim_engine/diarization/` (planned) |
-| 5 | Word Alignment Engine | 2 | `engine/src/verbatim_engine/alignment/` (planned) |
+| 4 | Speaker Diarization Engine | 2 | `engine/src/verbatim_engine/diarization/` (segmentation, embeddings, clustering, timeline, word/segment assignment) |
+| 5 | Word Alignment Engine | 2 | `engine/src/verbatim_engine/alignment/` (CTC models, Viterbi, aligner, boundary refinement) |
 | 6 | Transcript Verification Engine | 3 | `engine/src/verbatim_engine/verification/` (planned) |
-| 7 | Transcript Editor | 2+ | Swift (Stage 1 ships a read-only transcript view with click-to-seek) |
+| 7 | Transcript Editor | 2 | `engine/src/verbatim_engine/transcript/` (data model, build, corrections + undo) and `app/Sources/Verbatim/Workspace/` |
 | 8 | Export Manager | 1 (TXT) / 4 | `engine/src/verbatim_engine/export/` |
-| 9 | Model Manager | 1 (basic) / 5 | `engine/src/verbatim_engine/models/` |
+| 9 | Model Manager | 1–2 / 5 | `engine/src/verbatim_engine/models/` (HuggingFace and pinned-URL downloads) |
 | 10 | Persistent Job Manager | 1 | `engine/src/verbatim_engine/jobs/` |
 
 ## 4. Selected libraries and verified compatibility
@@ -78,8 +82,13 @@ the GitHub-hosted macOS runner because the dev container cannot reach them.
 | ONNX runtime | onnxruntime | `>=1.17,<1.24` | needed by Silero VAD; 1.24+ is macOS 14+ only | Linux |
 | Model download | huggingface_hub | `>=0.23` | explicit `snapshot_download` into a plain directory; `local_files_only` when loading | CI |
 | Storage | SQLite (Python `sqlite3`) | system | WAL, foreign keys, migrations; FTS5 planned for Stage 4 | Linux + CI |
-| Diarization (Stage 2) | pyannote.audio | TBD | see risks | not yet |
-| Alignment (Stage 2) | CTC forced alignment (wav2vec2 family) | TBD | see risks | not yet |
+| Diarization | pyannote segmentation-3.0 + WeSpeaker ResNet34 (the models of pyannote's `speaker-diarization-3.1`), as ONNX exports, run on onnxruntime; pipeline re-implemented in NumPy/SciPy | pinned SHA-256 | Same models and algorithm as pyannote 3.1 without PyTorch (excluded from the bundle) and without gated HuggingFace downloads | Linux + CI (DER measured) |
+| Clustering | SciPy (`linkage`, `linear_sum_assignment`) | `scipy>=1.13` | centroid-linkage agglomerative clustering; already in the bundle via mlx-whisper | Linux + CI |
+| Speaker features | kaldi-native-fbank | `>=1.20` | Kaldi-compatible filterbanks (WeSpeaker and NeMo inputs), Apache-2.0 | Linux + CI |
+| Alignment (English) | NVIDIA NeMo Conformer-CTC (Small, Medium), ONNX exports by sherpa-onnx | pinned SHA-256 | CC BY 4.0; testable offline; ~35 ms word-start error | Linux + CI |
+| Alignment (multilingual) | Meta MMS-300M forced aligner (ONNX) | HF file, size-verified | 1,100+ languages; most precise measured (~18 ms); **CC BY-NC 4.0** | CI only (HF unreachable from the dev container) |
+| Romanisation | uroman | `>=1.3` | non-Latin scripts → Latin letters for MMS (Apache-2.0) | Linux |
+| CTC alignment | own NumPy Viterbi | — | `torchaudio.functional.forced_align` is deprecated and needs PyTorch | Linux + CI |
 | YouTube (Stage 4) | yt-dlp | TBD | authorized content only; captions when available | not yet |
 
 Python runtime: CPython 3.12 (python-build-standalone, relocatable) embedded in
@@ -100,7 +109,7 @@ Every ASR backend reports what it can actually do, and the job records the
 | Acceleration on Apple Silicon | CPU (Accelerate / int8) | Metal GPU |
 | Measurable progress | yes (segment end times) | yes (decoded frames) |
 
-## 5. Pipeline (Stage 1)
+## 5. Pipeline
 
 1. **Prepare** — re-validate the source (exists, regular file, size/mtime unchanged).
 2. **Extract** — PyAV decodes the best audio stream and resamples to 16 kHz mono
@@ -125,6 +134,48 @@ Every ASR backend reports what it can actually do, and the job records the
    segment's `flags`. Segments, words, confidence statistics and detected language
    are written in one transaction.
 
+7. **Unload the recogniser**, then **diarize** — sliding 10 s windows (1 s step)
+   through segmentation-3.0 give up to three local speakers per window (with
+   overlaps); a WeSpeaker embedding of each local speaker's clean speech feeds
+   centroid-linkage clustering with pyannote 3.1's tuned threshold, which
+   estimates the number of speakers unless the user gives an exact number or a
+   range. Local speakers are mapped to global ones and every window's opinion is
+   combined into a frame-level timeline (16.9 ms frames) holding, per frame, the
+   number of speakers, each speaker's activation (window agreement) and the
+   embedding margin. The timeline is saved in the job folder (resume).
+8. **Align** — for each group of segments (≤ 30 s), CTC emissions are computed
+   on level-normalised audio and the transcript tokens are forced through them
+   (Viterbi) with a wildcard token at the edges, between segments and in place of
+   words the model cannot spell. Token spikes become word boundaries using pauses
+   (energy) or, in connected speech, a per-model split of the gap. Segments whose
+   alignment is implausible keep Whisper's times and are flagged. Results are
+   appended per group to `alignment.jsonl` (resume).
+9. **Finalize** — each word gets the speaker active for most of its duration;
+   segments are split where the speaker changes; doubtful attributions are
+   flagged; speakers are numbered by first appearance; the transcript, its
+   immutable original copy and the speakers are written in one transaction.
+
+### Speaker assignment thresholds (heuristics, not calibrated probabilities)
+
+| Flag | Rule |
+|------|------|
+| `speaker_uncertain` | coverage of the assigned speaker < 0.5, window agreement < 0.5, embedding margin < 0.1 (only with 2+ speakers), or no voice under the words (nearest speaker within 1 s used) |
+| `speaker_change_uncertain` | a word next to a change is < 75% covered by its speaker, overlaps, or was folded |
+| `overlapping_speech` | ≥ 20% of the segment's word time, or ≥ 0.3 s, has 2+ speakers |
+| `alignment_failed` | mean token log-probability < −4, median start shift vs. Whisper > 1.5 s, or a word longer than 4 s |
+
+A run of words that switches speaker inside a segment and back again is
+folded into the surrounding speaker when its own coverage is < 0.5.
+
+### Corrections
+
+Corrections (rename, merge and add speakers; reassign, split, merge and edit
+segments; mark passages) run in the engine, each in one transaction that stores
+the before/after state of the rows it touches; undo and redo restore those
+states in order. The AI output is kept three ways: the `original_transcripts`
+copy, `original_text`/`original_speaker_id` per segment and `original_text` per
+word. Editing text re-derives the segment's words so word timings stay valid.
+
 Hallucination guards already in Stage 1: VAD, temperature fallback with
 compression-ratio / log-probability / no-speech thresholds, prompt reset on
 high temperature. Per-segment `avg_logprob`, `no_speech_prob`,
@@ -137,11 +188,14 @@ shown only after enough work has been observed.
 
 ## 6. Processing modes
 
-| Mode | Model | Decoding | Stage 1 behaviour |
-|------|-------|----------|-------------------|
-| Fast | Whisper Small | greedy (beam 1) | single pass |
-| Balanced | Whisper Large-v3 Turbo | beam 5 where supported | single pass |
-| Maximum Accuracy | Whisper Large-v3 | beam 5 / best-of 5 where supported; float32 on CPU | single pass. Multi-pass verification (passes 5–8) arrives in Stage 3; the UI says so. |
+| Mode | Model | Decoding | Speakers / words |
+|------|-------|----------|------------------|
+| Fast | Whisper Small | greedy (beam 1) | speakers when the model is installed; Whisper word times |
+| Balanced | Whisper Large-v3 Turbo | beam 5 where supported | speakers and forced alignment when installed |
+| Maximum Accuracy | Whisper Large-v3 | beam 5 / best-of 5 where supported; float32 on CPU | as Balanced. Multi-pass verification (passes 5–8) arrives in Stage 3; the UI says so. |
+
+Speaker identification can be required, turned off or left automatic per job;
+"required" refuses to start without the model instead of silently skipping.
 
 Whisper Medium is available for manual selection.
 
@@ -158,6 +212,15 @@ for a single loaded model plus decoding buffers and is **not yet measured**.
 | Whisper Medium | 769 M | ~1.5 GB | ~2–3 GB | faster-whisper, mlx |
 | Whisper Large-v3 | 1550 M | ~3.1 GB | ~4–7 GB (float32 CPU is the upper bound) | faster-whisper, mlx |
 | Whisper Large-v3 Turbo | 809 M | ~1.6 GB | ~2–4 GB | faster-whisper, mlx |
+
+Speaker and alignment models (sizes and checksums verified by the same script):
+
+| Model | Download | Est. memory | Languages | Licence |
+|-------|---------:|------------:|-----------|---------|
+| Speaker diarization: segmentation-3.0 + WeSpeaker ResNet34 | 33 MB | ~0.4 GB | any | MIT; CC BY 4.0 |
+| Word alignment: Conformer-CTC Small | 76 MB | ~0.5 GB | English | CC BY 4.0 |
+| Word alignment: Conformer-CTC Medium | 166 MB | ~0.8 GB | English | CC BY 4.0 |
+| Word alignment: MMS-300M | 1.26 GB | ~2.5 GB | 1,100+ | CC BY-NC 4.0 (non-commercial) |
 
 Models are **never** downloaded implicitly. The user sees the size and confirms;
 model loading always uses local files only. The storage folder is configurable
@@ -200,17 +263,25 @@ model loading always uses local files only. The storage folder is configurable
 6. **Bundle size.** The Stage 1 bundle is about 800 MB (MLX, numba/llvmlite,
    scipy, onnxruntime, CTranslate2, FFmpeg). PyTorch is already excluded and
    MLX transcription is verified without it; further trimming is Stage 5 work.
-7. **pyannote.audio (Stage 2)**: current pipelines are gated on HuggingFace (the
-   user must accept terms and provide a token once); PyTorch MPS support and memory
-   use on 16 GB must be measured; licence terms of each pipeline must be checked.
-8. **Forced alignment (Stage 2)**: wav2vec2 CTC aligners cover a limited set of
-   languages, and `torchaudio`'s alignment APIs have been deprecated/removed in
-   recent releases; a self-contained CTC Viterbi implementation may be needed.
+7. **Diarization is a re-implementation.** It uses pyannote 3.1's models and
+   algorithm but is not the pyannote.audio library; results are measured against
+   reference annotations (DER) rather than assumed equal. Far-field meetings with
+   heavy overlap remain hard (see the Stage 2 report). Speaker embeddings
+   capture voice, not accent: very similar voices may be merged.
+8. **Alignment model licences and coverage.** The most precise aligner (MMS) is
+   non-commercial; the permissive ones are English-only. Without an installed
+   aligner for the language, word times come from Whisper and the job records
+   why. Boundary refinement parameters were fitted on synthetic speech.
 9. **YouTube (Stage 4)**: yt-dlp breaks when YouTube changes; current yt-dlp needs
    an external JavaScript runtime for YouTube; terms of service restrict use to
    content the user is authorized to download. No DRM or authentication bypass.
 10. **Code signing & notarization (Stage 5)**: every embedded `.so`/`.dylib` must be
     signed with the hardened runtime; numba/llvmlite and MLX may need JIT-related
     entitlements. The Stage 1 bundle is ad-hoc signed and not notarized.
-11. **Memory pressure**: Stage 2 adds diarization and alignment models. The worker
-    must run them sequentially and release each before loading the next.
+11. **Memory pressure**: the worker unloads Whisper before the diarization and
+    alignment models load, and runs them one after the other; their peak memory
+    on 16 GB has not been measured yet.
+12. **Swift compiler.** Swift 6.1.2 crashed in IR generation on a method
+    reference used as a `Binding` setter; closures are used instead. The UI still
+    has no automated interaction tests (it is exercised through the model layer,
+    the packaged-app self-test and window snapshots).

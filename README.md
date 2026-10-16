@@ -4,11 +4,26 @@ Accurate, local transcription of videos and podcasts for macOS on Apple
 Silicon. A native SwiftUI app drives a Python engine that runs Whisper
 (faster-whisper on the CPU, or MLX on the Apple GPU) entirely on your Mac.
 
-**Status: Stage 1 (Foundation).** Local media import, real Whisper
-transcription with timestamps, persistent projects and jobs (cancel, resume,
-crash recovery), TXT export, and explicit model management. Speaker
-diarization, word alignment, verification passes, YouTube import and the
-other export formats are later stages; see `docs/ARCHITECTURE.md`.
+**Status: Stage 2 (Speaker Intelligence).** Everything from Stage 1 (local
+media import, real Whisper transcription, persistent projects and jobs with
+cancel/resume/crash recovery, TXT export, explicit model management) plus:
+
+* **Speakers** — who spoke when, found on your Mac (pyannote's segmentation and
+  WeSpeaker models on ONNX Runtime): the number of speakers is estimated (or
+  given), overlapping speech is detected, segments are split where the speaker
+  changes, and doubtful attributions are flagged. Speakers stay anonymous
+  ("Speaker 1") until you name them.
+* **Word alignment** — precise word times by CTC forced alignment (NeMo
+  Conformer-CTC for English, MMS for 1,100+ languages); Whisper's times are kept
+  and flagged where alignment is rejected.
+* **Three-panel workspace** — speakers | video | transcript; the playing segment
+  and word are highlighted; clicking a segment or word seeks the video.
+* **Corrections with undo/redo** — rename, merge and add speakers; reassign,
+  split, merge and edit segments; mark passages uncertain. The AI-generated
+  transcript is kept unchanged alongside.
+
+Verification passes, YouTube import and the other export formats are later
+stages; see `docs/ARCHITECTURE.md` and `docs/STAGE2_REPORT.md`.
 
 ## Requirements
 
@@ -25,10 +40,12 @@ open build/Verbatim.app         # or double-click it in Finder
 
 The bundle contains its own Python runtime and the engine; no Terminal setup
 is needed to run it. On first use, open **Settings › Models** and download a
-model (sizes are shown before anything is downloaded). An app built on your
-own Mac is ad-hoc signed and opens normally; a build downloaded from CI is
-quarantined by Gatekeeper and must be opened with right-click › Open
-(it is not notarized yet).
+Whisper model, the speaker identification model (33 MB) and, for precise word
+times, an alignment model (sizes and licences are shown before anything is
+downloaded). An app built on your own Mac is ad-hoc signed and opens normally;
+a build downloaded from CI is quarantined by Gatekeeper (it is not notarized
+yet): on macOS 15 use System Settings › Privacy & Security › Open Anyway, or
+`xattr -dr com.apple.quarantine Verbatim.app`.
 
 Development loop without building a bundle:
 
@@ -44,7 +61,9 @@ The engine also works headless:
 cd engine && uv sync
 uv run verbatim-engine models                                  # catalog and install state
 uv run verbatim-engine download-model mlx/large-v3-turbo       # explicit download
-uv run verbatim-engine transcribe ~/talk.mp4 --mode maximum -o talk.txt
+uv run verbatim-engine download-model diarization/pyannote-wespeaker
+uv run verbatim-engine download-model alignment/en-conformer-small
+uv run verbatim-engine transcribe ~/talk.mp4 --mode maximum --num-speakers 2 -o talk.txt
 ```
 
 ## Tests
@@ -52,12 +71,18 @@ uv run verbatim-engine transcribe ~/talk.mp4 --mode maximum -o talk.txt
 ```sh
 cd engine
 uv run pytest -m "not model"                                   # no weights needed
-VERBATIM_TEST_MODEL_DIR=/path/to/faster-whisper-small uv run pytest -m model
+uv run python scripts/fetch_speaker_corpus.py /tmp/speakers    # real speech + speaker annotations
+VERBATIM_TEST_MODEL_DIR=/path/to/faster-whisper-small \
+VERBATIM_TEST_DIARIZATION_DIR=/path/to/models/diarization/pyannote-wespeaker \
+VERBATIM_TEST_ALIGNMENT_DIR=/path/to/models/alignment/en-conformer-small \
+VERBATIM_TEST_SPEAKER_CORPUS=/tmp/speakers uv run pytest -m model
+uv run python scripts/benchmark_word_timing.py --whisper … --aligner nemo:…   # word-time accuracy
 cd ../app && swift test                                        # macOS only
 ```
 
-Real-model tests transcribe actual speech with real Whisper weights; they are
-skipped (never faked) when no weights are available. CI
+Real-model tests run actual speech through real models (Whisper, diarization,
+alignment) and measure WER, DER and word-time error; they are skipped (never
+faked) when the models are not available. CI
 (`.github/workflows/ci.yml`) runs everything on Linux and on an Apple Silicon
 macOS runner, builds the app bundle and smoke-tests it.
 
@@ -65,8 +90,8 @@ macOS runner, builds the app bundle and smoke-tests it.
 
 ```
 app/       Swift package: VerbatimCore (engine client, protocol types) and the SwiftUI app
-engine/    Python engine: media, audio, ASR backends, jobs, storage, RPC server, CLI
+engine/    Python engine: media, audio, ASR, diarization, alignment, transcript corrections, jobs, storage, RPC, CLI
 shared/    protocol fixtures captured from a real engine run (decoded by Swift tests)
 scripts/   build_app.sh, smoke_test_app.sh, app_self_test.sh, dev_run.sh, verify_model_catalog.py
-docs/      ARCHITECTURE.md, ENGINE_PROTOCOL.md, STAGE1_REPORT.md (results and limitations)
+docs/      ARCHITECTURE.md, ENGINE_PROTOCOL.md, STAGE1_REPORT.md, STAGE2_REPORT.md (results and limitations)
 ```
