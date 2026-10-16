@@ -33,9 +33,22 @@ Out of scope (later stages): verification passes, other export formats, full-tex
 
 | Where | What ran |
 |-------|----------|
-| Linux dev container | Engine suite; diarization DER on real recordings; synthetic multi-speaker conversations; word-timing accuracy; full pipeline (Whisper Small + diarization + alignment) with corrections through the RPC methods; 13-minute performance run. |
+| Linux dev container | Engine suite; diarization DER on real recordings; synthetic multi-speaker conversations; word-timing accuracy; full pipeline (Whisper Small + diarization + alignment) with corrections through the RPC methods; review-flag evaluation on the annotated corpus; 13-minute performance run. |
 | GitHub Actions, Ubuntu 24.04 | Everything above, plus the MMS multilingual aligner (HuggingFace is not reachable from the dev container) and the word-timing benchmark of every aligner. Models downloaded through the engine's own download path. |
 | GitHub Actions, macOS 15 (Apple M1) | Engine suite with faster-whisper, MLX, diarization and alignment; Swift build and tests (fixtures, a real two-speaker transcription driven from the Swift client with rename, reassign, split, undo and redo); app bundle; packaged-app self-tests including a two-person call with speakers, aligned words, a rename and its undo. |
+
+Test counts (CI, final Stage 2 commit):
+
+| Suite | Linux | macOS |
+|-------|------:|------:|
+| Engine tests without model weights | 78 passed | 77 passed, 1 skipped |
+| Engine tests with real models | 24 passed, 3 skipped (MLX needs Apple Silicon) | 25 passed, 2 skipped (MMS is downloaded only on Linux) |
+| Swift tests (protocol fixtures, formatting, real engine) | — | 20 passed |
+| App bundle: smoke test and self-tests (faster-whisper, MLX, two-person call) | — | 4 passed |
+
+The two-person self-test drives the packaged app end to end: 10 segments,
+2 speakers, 80 of 80 words force-aligned, a rename to "Diane", undo back to
+"Speaker 1" with redo available, and a snapshot of the three-panel workspace.
 
 ## Measured accuracy
 
@@ -174,8 +187,9 @@ target Mac has not been measured.
 ## Known limitations
 
 * Far-field meeting audio with heavy overlap remains hard (DER 0.32 on the AMI
-  excerpts). Very similar voices can be merged into one speaker; the fix is the
-  user's merge/split tools.
+  excerpts). Similar or distant voices can be merged into one speaker or
+  swapped between two; the fix is the user's merge, reassign and new-speaker
+  tools.
 * The alignment models are English-only (permissive licences) or multilingual
   but **non-commercial** (MMS, CC BY-NC 4.0); without a suitable model, word
   times come from Whisper and the job records why. Boundary parameters were
