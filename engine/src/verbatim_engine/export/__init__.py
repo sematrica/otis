@@ -1,5 +1,5 @@
-"""Export Manager. Stage 1 implements plain text; SRT, VTT, JSON, CSV and
-Markdown arrive in Stage 4."""
+"""Export Manager. Plain text (with speaker turns when speakers are known);
+SRT, VTT, JSON, CSV and Markdown arrive in Stage 4."""
 
 from __future__ import annotations
 

@@ -5,7 +5,13 @@ transcribes the JFK corpus sample with a real model, and writes every message
 type the app decodes to ``shared/protocol-fixtures/``. Paths that depend on the
 machine are replaced with neutral placeholders; everything else is verbatim.
 
-    uv run python scripts/capture_protocol_fixtures.py --model-path /path/to/faster-whisper-model
+    uv run python scripts/capture_protocol_fixtures.py --model-path /path/to/faster-whisper-model \
+        --diarization-dir /path/to/diarization/model --alignment-dir /path/to/alignment/model \
+        --conversation /path/to/sample.wav
+
+With the speaker and alignment models, a two-person conversation is also
+transcribed with speakers and word alignment, and the correction methods
+(rename, undo) are captured.
 """
 
 from __future__ import annotations
@@ -28,9 +34,19 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-path", required=True)
     parser.add_argument("--backend", default="faster-whisper")
+    parser.add_argument("--diarization-dir", help="installed diarization model folder")
+    parser.add_argument("--alignment-dir", help="installed English alignment model folder")
+    parser.add_argument("--conversation", help="a short multi-speaker recording (e.g. the speaker corpus sample.wav)")
     args = parser.parse_args()
 
     data_dir = Path(tempfile.mkdtemp(prefix="verbatim-fixtures-"))
+    for group, family, folder in (("diarization", "pyannote-wespeaker", args.diarization_dir),
+                                  ("alignment", "en-conformer-small", args.alignment_dir)):
+        if folder:  # make the installed model visible to this fresh data folder
+            target = data_dir / "models" / group / family
+            target.mkdir(parents=True)
+            for item in Path(folder).iterdir():
+                (target / item.name).symlink_to(item.resolve())
     proc = subprocess.Popen(
         [sys.executable, "-m", "verbatim_engine", "serve", "--data-dir", str(data_dir)],
         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, bufsize=1,
@@ -56,6 +72,7 @@ def main() -> int:
 
     replacements = [
         (args.model_path, "/Users/example/Models/faster-whisper-small"),
+        *([(args.conversation, "/Users/example/Downloads/call.wav")] if args.conversation else []),
         (str(data_dir.resolve()), "/Users/example/Library/Application Support/Verbatim"),
         (str(data_dir), "/Users/example/Library/Application Support/Verbatim"),
         (str(ROOT), "/Users/example/verbatim"),
@@ -99,6 +116,36 @@ def main() -> int:
         save("notification.project.updated", project_note)
     save("transcript.get", call("transcript.get", {"project_id": project["result"]["id"], "include_words": True}))
     save("export.render", call("export.render", {"project_id": project["result"]["id"], "format": "txt"}))
+    if args.conversation and args.diarization_dir and args.alignment_dir:
+        call_project = call("projects.create", {"path": args.conversation, "title": "Call"})["result"]
+        speaker_options = {**options, "diarize": True, "align": True}
+        job = call("jobs.start", {"project_id": call_project["id"], "options": speaker_options})["result"]
+        while True:
+            snapshot = call("jobs.get", {"job_id": job["id"]})
+            if snapshot["result"]["status"] in ("completed", "failed", "cancelled", "interrupted"):
+                break
+            time.sleep(0.3)
+        save("jobs.get.completed.speakers", snapshot)
+        transcript = call("transcript.get", {"project_id": call_project["id"], "include_words": True})
+        save("transcript.get.speakers", transcript)
+        speaker = transcript["result"]["speakers"][0]
+        save("transcript.renameSpeaker", call("transcript.renameSpeaker", {
+            "project_id": call_project["id"], "speaker_id": speaker["id"], "name": "Diane"}))
+        segments = transcript["result"]["segments"]
+        splittable = next(s for s in segments if len(s["words"]) >= 2)
+        save("transcript.splitSegment", call("transcript.splitSegment", {
+            "project_id": call_project["id"], "segment_id": splittable["id"], "word_index": 1}))
+        save("transcript.undo", call("transcript.undo", {"project_id": call_project["id"]}))
+        save("transcript.history", call("transcript.history", {"project_id": call_project["id"]}))
+        save("transcript.original", call("transcript.original", {"project_id": call_project["id"]}))
+        save("error.speaker_not_found", call("transcript.renameSpeaker", {
+            "project_id": call_project["id"], "speaker_id": 999999, "name": "x"}))
+        note = next((n for n in notifications if n["method"] == "transcript.updated"), None)
+        if note is None:
+            time.sleep(0.5)
+            note = next((n for n in notifications if n["method"] == "transcript.updated"), None)
+        if note:
+            save("notification.transcript.updated", note)
     save("projects.list", call("projects.list"))
     call("engine.shutdown")
     proc.wait(timeout=30)

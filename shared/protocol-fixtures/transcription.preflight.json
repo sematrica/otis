@@ -2,17 +2,37 @@
   "id": 9,
   "result": {
     "options": {
+      "align": "auto",
+      "alignment_model": null,
       "backend": "faster-whisper",
       "chunk_seconds": 600.0,
+      "diarize": "auto",
       "language": null,
       "mode": "balanced",
       "model_id": null,
       "model_path": "/Users/example/Models/faster-whisper-small",
+      "speakers": {
+        "max": null,
+        "min": null,
+        "num": null
+      },
       "vad": true
     },
     "resolved": {
+      "alignment": {
+        "candidates": [
+          "alignment/en-conformer-small"
+        ],
+        "enabled": true,
+        "skip_reason": null
+      },
       "backend": "faster-whisper",
       "chunk_seconds": 600.0,
+      "diarization": {
+        "enabled": true,
+        "skip_reason": null,
+        "speakers": {}
+      },
       "mode": "balanced",
       "model": {
         "display_name": "Custom model (small-int8)",

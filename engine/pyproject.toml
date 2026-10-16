@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "verbatim-engine"
-version = "0.1.0"
+version = "0.2.0"
 description = "Local transcription engine for the Verbatim macOS app"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
@@ -18,6 +18,10 @@ dependencies = [
   # onnxruntime (Silero VAD) 1.24+ only ships macOS 14+ wheels.
   "onnxruntime>=1.17,<1.24",
   "huggingface_hub>=0.23",
+  # Speaker diarization (clustering) and word alignment (features, romanisation).
+  "scipy>=1.13",
+  "kaldi-native-fbank>=1.20",
+  "uroman>=1.3",
   # Apple-GPU backend. Its PyTorch dependency is only used by its checkpoint
   # converter, so it is excluded via [tool.uv] override-dependencies below.
   "mlx-whisper==0.4.3; sys_platform == 'darwin' and platform_machine == 'arm64'",
@@ -40,6 +44,6 @@ override-dependencies = ["torch; sys_platform == 'never'"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
-  "model: requires real Whisper model weights (set VERBATIM_TEST_MODEL_DIR)",
+  "model: requires real model weights (Whisper, diarization or alignment; see tests/conftest.py)",
   "slow: long-running end-to-end test",
 ]

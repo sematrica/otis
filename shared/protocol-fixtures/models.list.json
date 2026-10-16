@@ -45,7 +45,12 @@
         "backend": "faster-whisper",
         "display_name": "Whisper Small",
         "family": "small",
+        "files": [],
+        "homepage": "",
         "id": "faster-whisper/small",
+        "kind": "asr",
+        "languages": [],
+        "license": "",
         "memory_estimates": {
           "float32": 1400000000,
           "int8": 800000000
@@ -54,6 +59,7 @@
         "notes": "",
         "parameters": "244M",
         "repo_id": "Systran/faster-whisper-small",
+        "required_files": [],
         "revision": null,
         "status": {
           "downloaded_at": null,
@@ -78,7 +84,12 @@
         "backend": "faster-whisper",
         "display_name": "Whisper Medium",
         "family": "medium",
+        "files": [],
+        "homepage": "",
         "id": "faster-whisper/medium",
+        "kind": "asr",
+        "languages": [],
+        "license": "",
         "memory_estimates": {
           "float32": 3500000000,
           "int8": 1600000000
@@ -87,6 +98,7 @@
         "notes": "",
         "parameters": "769M",
         "repo_id": "Systran/faster-whisper-medium",
+        "required_files": [],
         "revision": null,
         "status": {
           "downloaded_at": null,
@@ -111,7 +123,12 @@
         "backend": "faster-whisper",
         "display_name": "Whisper Large-v3",
         "family": "large-v3",
+        "files": [],
+        "homepage": "",
         "id": "faster-whisper/large-v3",
+        "kind": "asr",
+        "languages": [],
+        "license": "",
         "memory_estimates": {
           "float32": 6800000000,
           "int8": 2600000000
@@ -120,6 +137,7 @@
         "notes": "Highest accuracy. Slow on CPU; float32 (Maximum Accuracy) needs about 7 GB.",
         "parameters": "1550M",
         "repo_id": "Systran/faster-whisper-large-v3",
+        "required_files": [],
         "revision": null,
         "status": {
           "downloaded_at": null,
@@ -144,7 +162,12 @@
         "backend": "faster-whisper",
         "display_name": "Whisper Large-v3 Turbo",
         "family": "large-v3-turbo",
+        "files": [],
+        "homepage": "",
         "id": "faster-whisper/large-v3-turbo",
+        "kind": "asr",
+        "languages": [],
+        "license": "",
         "memory_estimates": {
           "float32": 3800000000,
           "int8": 1700000000
@@ -153,6 +176,7 @@
         "notes": "Pruned decoder: much faster than Large-v3, slightly less accurate.",
         "parameters": "809M",
         "repo_id": "mobiuslabsgmbh/faster-whisper-large-v3-turbo",
+        "required_files": [],
         "revision": null,
         "status": {
           "downloaded_at": null,
@@ -175,7 +199,12 @@
         "backend": "mlx",
         "display_name": "Whisper Small",
         "family": "small",
+        "files": [],
+        "homepage": "",
         "id": "mlx/small",
+        "kind": "asr",
+        "languages": [],
+        "license": "",
         "memory_estimates": {
           "float16": 1000000000
         },
@@ -183,6 +212,7 @@
         "notes": "",
         "parameters": "244M",
         "repo_id": "mlx-community/whisper-small-mlx",
+        "required_files": [],
         "revision": null,
         "status": {
           "downloaded_at": null,
@@ -205,7 +235,12 @@
         "backend": "mlx",
         "display_name": "Whisper Medium",
         "family": "medium",
+        "files": [],
+        "homepage": "",
         "id": "mlx/medium",
+        "kind": "asr",
+        "languages": [],
+        "license": "",
         "memory_estimates": {
           "float16": 2300000000
         },
@@ -213,6 +248,7 @@
         "notes": "",
         "parameters": "769M",
         "repo_id": "mlx-community/whisper-medium-mlx",
+        "required_files": [],
         "revision": null,
         "status": {
           "downloaded_at": null,
@@ -235,7 +271,12 @@
         "backend": "mlx",
         "display_name": "Whisper Large-v3",
         "family": "large-v3",
+        "files": [],
+        "homepage": "",
         "id": "mlx/large-v3",
+        "kind": "asr",
+        "languages": [],
+        "license": "",
         "memory_estimates": {
           "float16": 4200000000
         },
@@ -243,6 +284,7 @@
         "notes": "Highest accuracy. Greedy decoding only (no beam search in mlx-whisper).",
         "parameters": "1550M",
         "repo_id": "mlx-community/whisper-large-v3-mlx",
+        "required_files": [],
         "revision": null,
         "status": {
           "downloaded_at": null,
@@ -265,7 +307,12 @@
         "backend": "mlx",
         "display_name": "Whisper Large-v3 Turbo",
         "family": "large-v3-turbo",
+        "files": [],
+        "homepage": "",
         "id": "mlx/large-v3-turbo",
+        "kind": "asr",
+        "languages": [],
+        "license": "",
         "memory_estimates": {
           "float16": 2400000000
         },
@@ -273,6 +320,7 @@
         "notes": "Pruned decoder: much faster than Large-v3, slightly less accurate.",
         "parameters": "809M",
         "repo_id": "mlx-community/whisper-large-v3-turbo",
+        "required_files": [],
         "revision": null,
         "status": {
           "downloaded_at": null,
@@ -281,6 +329,170 @@
             "model folder"
           ],
           "path": "/Users/example/Library/Application Support/Verbatim/models/mlx/large-v3-turbo",
+          "revision": null,
+          "size_on_disk": 0
+        }
+      },
+      {
+        "allow_patterns": [],
+        "approx_download_bytes": 33488994,
+        "backend": "onnx",
+        "display_name": "Speaker diarization (pyannote segmentation-3.0 + WeSpeaker ResNet34)",
+        "family": "pyannote-wespeaker",
+        "files": [
+          {
+            "sha256": "24615ee884c897d9d2ba09bb4d30da6bb1b15e685065962db5b02e76e4996488",
+            "size": 6958444,
+            "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-segmentation-models/sherpa-onnx-pyannote-segmentation-3-0.tar.bz2"
+          },
+          {
+            "sha256": "e9848563da86f263117134dfd7ad63c92355b37de492b55e325400c9d9c39012",
+            "size": 26530550,
+            "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/wespeaker_en_voxceleb_resnet34_LM.onnx"
+          }
+        ],
+        "homepage": "https://huggingface.co/pyannote/segmentation-3.0",
+        "id": "diarization/pyannote-wespeaker",
+        "kind": "diarization",
+        "languages": [],
+        "license": "segmentation-3.0: MIT (CNRS); WeSpeaker ResNet34 (VoxCeleb): CC BY 4.0",
+        "memory_estimates": {
+          "float32": 400000000
+        },
+        "multilingual": true,
+        "notes": "The models of pyannote's speaker-diarization-3.1 pipeline, converted to ONNX by the sherpa-onnx project. Works for any language.",
+        "parameters": "1.5M + 6.6M",
+        "repo_id": null,
+        "required_files": [
+          "segmentation.onnx",
+          "embedding.onnx"
+        ],
+        "revision": null,
+        "status": {
+          "downloaded_at": "2026-10-16T03:47:25.843Z",
+          "installed": true,
+          "missing": [],
+          "path": "/Users/example/Library/Application Support/Verbatim/models/diarization/pyannote-wespeaker",
+          "revision": null,
+          "size_on_disk": 32525181
+        }
+      },
+      {
+        "allow_patterns": [],
+        "approx_download_bytes": 76482338,
+        "backend": "onnx",
+        "display_name": "English word alignment (Conformer-CTC Small)",
+        "family": "en-conformer-small",
+        "files": [
+          {
+            "sha256": "83dcb462aece5bef4e8072c267419389f0b8d1f91152d8851765f284ff664caa",
+            "size": 76482338,
+            "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-ctc-en-conformer-small.tar.bz2"
+          }
+        ],
+        "homepage": "https://catalog.ngc.nvidia.com/orgs/nvidia/teams/nemo/models/stt_en_conformer_ctc_small",
+        "id": "alignment/en-conformer-small",
+        "kind": "alignment",
+        "languages": [
+          "en"
+        ],
+        "license": "CC BY 4.0 (NVIDIA NeMo stt_en_conformer_ctc_small)",
+        "memory_estimates": {
+          "float32": 500000000
+        },
+        "multilingual": false,
+        "notes": "Smallest download. English only.",
+        "parameters": "13M",
+        "repo_id": null,
+        "required_files": [
+          "model.onnx",
+          "tokens.txt"
+        ],
+        "revision": null,
+        "status": {
+          "downloaded_at": "2026-10-16T03:47:33.579Z",
+          "installed": true,
+          "missing": [],
+          "path": "/Users/example/Library/Application Support/Verbatim/models/alignment/en-conformer-small",
+          "revision": null,
+          "size_on_disk": 85340159
+        }
+      },
+      {
+        "allow_patterns": [],
+        "approx_download_bytes": 165685608,
+        "backend": "onnx",
+        "display_name": "English word alignment (Conformer-CTC Medium)",
+        "family": "en-conformer-medium",
+        "files": [
+          {
+            "sha256": "08cb7b6ebc516a2577c5b152230730ebf5f937507260305ea592c7accd7f899b",
+            "size": 165685608,
+            "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-ctc-en-conformer-medium.tar.bz2"
+          }
+        ],
+        "homepage": "https://catalog.ngc.nvidia.com/orgs/nvidia/teams/nemo/models/stt_en_conformer_ctc_medium",
+        "id": "alignment/en-conformer-medium",
+        "kind": "alignment",
+        "languages": [
+          "en"
+        ],
+        "license": "CC BY 4.0 (NVIDIA NeMo stt_en_conformer_ctc_medium)",
+        "memory_estimates": {
+          "float32": 800000000
+        },
+        "multilingual": false,
+        "notes": "More robust than Small on difficult audio. English only.",
+        "parameters": "30M",
+        "repo_id": null,
+        "required_files": [
+          "model.onnx",
+          "tokens.txt"
+        ],
+        "revision": null,
+        "status": {
+          "downloaded_at": null,
+          "installed": false,
+          "missing": [
+            "model folder"
+          ],
+          "path": "/Users/example/Library/Application Support/Verbatim/models/alignment/en-conformer-medium",
+          "revision": null,
+          "size_on_disk": 0
+        }
+      },
+      {
+        "allow_patterns": [
+          "*.onnx"
+        ],
+        "approx_download_bytes": 1260000000,
+        "backend": "onnx",
+        "display_name": "Multilingual word alignment (MMS-300M)",
+        "family": "mms-300m",
+        "files": [],
+        "homepage": "https://huggingface.co/deskpai/ctc_forced_aligner",
+        "id": "alignment/mms-300m",
+        "kind": "alignment",
+        "languages": [],
+        "license": "CC BY-NC 4.0 (Meta MMS) - non-commercial use only",
+        "memory_estimates": {
+          "float32": 2500000000
+        },
+        "multilingual": true,
+        "notes": "Over 1,100 languages (non-Latin scripts are romanised). Its licence does not allow commercial use.",
+        "parameters": "300M",
+        "repo_id": "deskpai/ctc_forced_aligner",
+        "required_files": [
+          "*.onnx"
+        ],
+        "revision": null,
+        "status": {
+          "downloaded_at": null,
+          "installed": false,
+          "missing": [
+            "model folder"
+          ],
+          "path": "/Users/example/Library/Application Support/Verbatim/models/alignment/mms-300m",
           "revision": null,
           "size_on_disk": 0
         }

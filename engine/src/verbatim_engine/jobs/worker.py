@@ -29,6 +29,8 @@ from typing import Any, Callable
 
 import numpy as np
 
+from ..alignment.aligner import SegmentAlignment, WordAligner
+from ..alignment.models import load_model as load_alignment_model
 from ..asr.base import DecodeOptions, TranscriptionResult, shift_segments
 from ..audio import SAMPLE_RATE
 from ..asr.merge import apply_ownership, assemble
@@ -36,13 +38,19 @@ from ..asr.registry import create_backend
 from ..audio.chunking import energy_envelope, plan_chunks
 from ..audio.extract import extract_audio
 from ..audio.wav import WavReader
+from ..diarization.assign import assign_speakers
+from ..diarization.clustering import SpeakerBounds
+from ..diarization.pipeline import DiarizationResult, Diarizer
 from ..errors import Cancelled, EngineError, SourceChanged
 from ..media.probe import check_unchanged
 from ..models.manager import ModelManager
 from ..paths import EnginePaths
 from ..storage import repo
 from ..storage.db import Database
-from .options import CHUNK_PAD_SECONDS, resolve
+from ..transcript.build import apply_alignment, speakers_in_order
+from ..transcript.model import TSegment
+from ..util.hardware import performance_core_count
+from .options import CHUNK_PAD_SECONDS, ResolvedJob, resolve
 
 log = logging.getLogger(__name__)
 
@@ -100,6 +108,10 @@ class Worker:
     def _finish(self, stage: str, status: str = "completed", detail: str | None = None) -> None:
         repo.finish_stage(self.db, self.job_id, stage, status, detail)
         self._changed(stage=stage)
+
+    def _skip(self, stage: str, detail: str | None) -> None:
+        repo.start_stage(self.db, self.job_id, stage, detail=detail)
+        self._finish(stage, status="skipped", detail=detail)
 
     # ------------------------------------------------------------------ run
 
@@ -305,21 +317,163 @@ class Worker:
         if decode_effective is not None:
             effective["decode"] = {k: v for k, v in decode_effective.items() if k not in load_settings and k != "backend"}
             repo.set_effective(self.db, self.job_id, effective)
+        # Free the recogniser before the speaker and alignment models load:
+        # large models never share memory.
         backend.close()
+        del backend
         self._finish("transcribe")
 
-        # 6. finalize ---------------------------------------------------------------
-        self._check_cancel()
-        self._start("finalize")
         pairs = [(c, results[c.index]) for c, _ in existing]
         merged = assemble(pairs, pad=CHUNK_PAD_SECONDS)
         language = _dominant_language(pairs)
-        count = repo.replace_transcript(self.db, project["id"], self.job_id, merged, language)
+        segments = [TSegment.from_merged(m) for m in merged]
+
+        # 6. speakers -------------------------------------------------------------
+        diarization = self._diarize(reader, resolved, effective)
+        repo.set_effective(self.db, self.job_id, effective)
+
+        # 7. word alignment -------------------------------------------------------
+        self._align(reader, segments, language, resolved, effective)
+        repo.set_effective(self.db, self.job_id, effective)
+
+        # 8. finalize ---------------------------------------------------------------
+        self._check_cancel()
+        self._start("finalize")
+        if diarization is not None:
+            segments = assign_speakers(segments, diarization)
+        speakers = speakers_in_order(segments) if diarization is not None else []
+        if diarization is not None:
+            effective["diarization"]["speakers_in_transcript"] = len(speakers)
+            repo.set_effective(self.db, self.job_id, effective)
+        count = repo.replace_transcript(self.db, project["id"], self.job_id, segments, language, speakers)
         removed = sum(1 for s in merged for f in s.flags if f.get("type") == "boundary_duplicate_removed")
         detail = f"{count} segment(s)"
+        if speakers:
+            detail += f", {len(speakers)} speaker(s)"
         if removed:
             detail += f"; {removed} duplicate(s) at chunk boundaries removed (recorded in flags)"
         self._finish("finalize", detail=detail)
+
+    # ------------------------------------------------------------------ speakers
+
+    def _diarize(self, reader: WavReader, resolved: ResolvedJob, effective: dict[str, Any]) -> DiarizationResult | None:
+        if resolved.diarization_dir is None:
+            effective["diarization"] = {"enabled": False, "reason": resolved.diarization_skip_reason}
+            self._skip("diarize", resolved.diarization_skip_reason)
+            return None
+        self._check_cancel()
+        settings = {
+            "model": str(resolved.diarization_dir),
+            "speakers": {k: v for k, v in resolved.speaker_bounds.items() if v is not None},
+            "version": DIARIZATION_VERSION,
+        }
+        path = self.paths.job_dir(self.job_id) / "diarization.npz"
+        result = None
+        if path.is_file():
+            try:
+                cached = DiarizationResult.load(path)
+                if cached.info.get("settings") == settings and abs(cached.duration - reader.duration) < 1e-3:
+                    result = cached
+            except (OSError, ValueError, KeyError):
+                result = None
+        duration = reader.duration
+        if result is not None:
+            self._start("diarize", unit="seconds", total=duration, done=duration)
+            reused = True
+        else:
+            reused = False
+            self._start("diarize", unit="seconds", total=duration, done=0.0)
+            diarizer = Diarizer(
+                resolved.diarization_dir / "segmentation.onnx",
+                resolved.diarization_dir / "embedding.onnx",
+                threads=performance_core_count(),
+            )
+            bounds = resolved.speaker_bounds
+            result = diarizer.run(
+                reader,
+                SpeakerBounds(num_speakers=bounds.get("num"), min_speakers=bounds.get("min"), max_speakers=bounds.get("max")),
+                progress=lambda fraction: self._progress("diarize", fraction * duration, duration),
+                should_cancel=self._poll_cancel,
+            )
+            result.info["settings"] = settings
+            temporary = path.with_name("diarization.partial.npz")
+            result.save(temporary)
+            os.replace(temporary, path)
+            repo.update_stage(self.db, self.job_id, "diarize", done=duration, total=duration)
+        overlap = sum(b - a for a, b in result.overlaps())
+        effective["diarization"] = {
+            "enabled": True,
+            "method": "pyannote segmentation-3.0 + WeSpeaker ResNet34 + agglomerative clustering (ONNX Runtime)",
+            "speakers_found": result.num_speakers,
+            "overlap_seconds": round(overlap, 2),
+            **{k: v for k, v in result.info.items() if k != "settings"},
+        }
+        detail = f"{result.num_speakers} speaker(s) found"
+        if overlap >= 0.5:
+            detail += f"; {overlap:.0f} s of overlapping speech"
+        if reused:
+            detail += " (reused from an earlier attempt)"
+        self._finish("diarize", detail=detail)
+        return result
+
+    # ------------------------------------------------------------------ alignment
+
+    def _align(self, reader: WavReader, segments: list[TSegment], language: str | None, resolved: ResolvedJob,
+               effective: dict[str, Any]) -> None:
+        if not resolved.alignment_candidates:
+            effective["alignment"] = {"enabled": False, "reason": resolved.alignment_skip_reason}
+            self._skip("align", resolved.alignment_skip_reason)
+            return
+        choice = resolved.alignment_model_for(language)
+        if choice is None:
+            reason = f"No installed word-alignment model supports this language ({language or 'unknown'}); word times come from Whisper."
+            effective["alignment"] = {"enabled": False, "reason": reason}
+            self._skip("align", reason)
+            return
+        spec, model_dir = choice
+        supported = [i for i, seg in enumerate(segments)
+                     if seg.words and (not spec.languages or (seg.language or language) in spec.languages)]
+        targets = [segments[i] for i in supported]
+        span_total = sum(max(0.0, s.end - s.start) for s in targets) or 1.0
+        self._check_cancel()
+        self._start("align", unit="seconds", total=span_total, done=0.0, detail=spec.display_name)
+
+        # Results are appended per group, so an interrupted job resumes here.
+        key = _alignment_key(spec.id, targets)
+        progress_path = self.paths.job_dir(self.job_id) / "alignment.jsonl"
+        done: dict[int, SegmentAlignment] = {}
+        if progress_path.is_file():
+            for line in progress_path.read_text().splitlines():
+                try:
+                    entry = json.loads(line)
+                except ValueError:
+                    continue
+                if entry.get("key") == key:
+                    done.update({int(i): SegmentAlignment.from_dict(r) for i, r in entry["results"].items()})
+        else:
+            progress_path.touch()
+
+        def on_group(_group, new: dict[int, SegmentAlignment]) -> None:
+            with open(progress_path, "a") as f:
+                f.write(json.dumps({"key": key, "results": {str(i): r.to_dict() for i, r in new.items()}}) + "\n")
+
+        model = load_alignment_model(spec, model_dir, performance_core_count())
+        aligner = WordAligner(model)
+        results = aligner.align(
+            reader, targets, language, done=done, on_group=on_group,
+            progress=lambda processed, total: self._progress("align", processed / total * span_total, span_total),
+            should_cancel=self._poll_cancel,
+        )
+        del model, aligner
+        by_segment: list[SegmentAlignment | None] = [None] * len(segments)
+        for i, res in zip(supported, results):
+            by_segment[i] = res
+        summary = apply_alignment(segments, by_segment)
+        effective["alignment"] = {"enabled": True, "model": {"id": spec.id, "display_name": spec.display_name}, **summary}
+        detail = f"{summary['aligned']} of {summary['segments']} segment(s) aligned"
+        if summary["failed"]:
+            detail += f"; {summary['failed']} kept Whisper's timing (flagged)"
+        self._finish("align", detail=detail)
 
     @staticmethod
     def _prompt_from_previous(index: int, chunks, results: dict[int, TranscriptionResult]) -> str | None:
@@ -331,6 +485,19 @@ class Worker:
         owned = apply_ownership(previous_chunk, results[index - 1], is_last=False)
         words = " ".join(s.text for s in owned).split()
         return " ".join(words[-PROMPT_WORDS:]) or None
+
+
+#: Bump when diarization output changes meaning, so cached results are redone.
+DIARIZATION_VERSION = 1
+
+
+def _alignment_key(model_id: str, segments: list[TSegment]) -> str:
+    import hashlib
+
+    digest = hashlib.sha256(model_id.encode())
+    for seg in segments:
+        digest.update(f"{seg.start:.3f}|{seg.end:.3f}|{seg.text}|{len(seg.words)}\n".encode())
+    return digest.hexdigest()[:16]
 
 
 def _dominant_language(pairs) -> str | None:

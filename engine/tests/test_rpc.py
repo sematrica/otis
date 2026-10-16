@@ -98,7 +98,7 @@ def engine(data_dir):
 
 def test_info_and_protocol_hygiene(engine):
     info = engine.result("engine.info")
-    assert info["protocol_version"] == 1
+    assert info["protocol_version"] == 2
     assert {b["name"] for b in info["backends"]} == {"faster-whisper", "mlx"}
     fw = next(b for b in info["backends"] if b["name"] == "faster-whisper")
     assert fw["available"] is True and fw["capabilities"]["beam_search"] is True
@@ -121,7 +121,7 @@ def test_errors_are_structured(engine):
     # malformed input does not kill the server
     engine.proc.stdin.write("{not json\n")
     engine.proc.stdin.flush()
-    assert engine.result("engine.info")["protocol_version"] == 1
+    assert engine.result("engine.info")["protocol_version"] == 2
 
 
 def test_project_crud_and_export_guard(engine, jfk_path, tmp_path):
@@ -145,8 +145,10 @@ def test_project_crud_and_export_guard(engine, jfk_path, tmp_path):
 
 def test_models_and_settings(engine, tmp_path):
     listing = engine.result("models.list")
-    assert len(listing["models"]) == 8
+    kinds = [m["kind"] for m in listing["models"]]
+    assert kinds.count("asr") == 8 and kinds.count("diarization") == 1 and kinds.count("alignment") == 3
     assert all(m["status"]["installed"] is False for m in listing["models"])
+    assert all(m["license"] for m in listing["models"] if m["kind"] != "asr")
     external = tmp_path / "ssd" / "models"
     settings = engine.result("settings.set", {"models_dir": str(external)})
     assert settings["models_dir"] == str(external.resolve())

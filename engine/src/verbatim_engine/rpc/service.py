@@ -22,6 +22,7 @@ from ..models.manager import ModelManager
 from ..paths import EnginePaths
 from ..storage import repo
 from ..storage.db import Database
+from ..transcript.edit import TranscriptEditor
 from ..util.hardware import describe as describe_hardware
 
 log = logging.getLogger(__name__)
@@ -38,6 +39,13 @@ def _require(params: dict[str, Any], key: str, kind: type = str) -> Any:
     return value
 
 
+def _int_list(params: dict[str, Any], key: str) -> list[int]:
+    value = params.get(key)
+    if not isinstance(value, list) or not value or not all(isinstance(v, int) and not isinstance(v, bool) for v in value):
+        raise InvalidParams(f"Parameter '{key}' must be a non-empty list of integers.")
+    return value
+
+
 class EngineService:
     def __init__(self, paths: EnginePaths, notify: Notify, worker_command: list[str] | None = None):
         self.paths = paths
@@ -46,6 +54,7 @@ class EngineService:
         self.models = ModelManager(self.db, paths)
         self.jobs = JobManager(self.db, paths, notify, worker_command)
         self.downloads = DownloadManager(paths, notify, worker_command)
+        self.editor = TranscriptEditor(self.db)
         self.shutdown_requested = False
 
     def start(self) -> None:
@@ -74,6 +83,26 @@ class EngineService:
             "jobs.get": lambda p: repo.get_job(self.db, _require(p, "job_id")),
             "jobs.list": self.jobs_list,
             "transcript.get": self.transcript_get,
+            "transcript.original": self.transcript_original,
+            "transcript.history": lambda p: {"edits": self.editor.history(_require(p, "project_id"))},
+            "transcript.renameSpeaker": lambda p: self._edit(p, lambda pid: self.editor.rename_speaker(
+                pid, _require(p, "speaker_id", int), p.get("name"))),
+            "transcript.createSpeaker": lambda p: self._edit(p, lambda pid: self.editor.create_speaker(
+                pid, p.get("name"))[0]),
+            "transcript.mergeSpeakers": lambda p: self._edit(p, lambda pid: self.editor.merge_speakers(
+                pid, _int_list(p, "speaker_ids"), _require(p, "into", int))),
+            "transcript.assignSpeaker": lambda p: self._edit(p, lambda pid: self.editor.assign_speaker(
+                pid, _int_list(p, "segment_ids"), p.get("speaker_id"), p.get("new_speaker_name"))[0]),
+            "transcript.splitSegment": lambda p: self._edit(p, lambda pid: self.editor.split_segment(
+                pid, _require(p, "segment_id", int), _require(p, "word_index", int))[0]),
+            "transcript.mergeSegments": lambda p: self._edit(p, lambda pid: self.editor.merge_segments(
+                pid, _int_list(p, "segment_ids"))),
+            "transcript.editText": lambda p: self._edit(p, lambda pid: self.editor.edit_text(
+                pid, _require(p, "segment_id", int), _require(p, "text"))),
+            "transcript.markUncertain": lambda p: self._edit(p, lambda pid: self.editor.mark_uncertain(
+                pid, _require(p, "segment_id", int), bool(p.get("uncertain", True)), p.get("note"))),
+            "transcript.undo": lambda p: self._edit(p, self.editor.undo),
+            "transcript.redo": lambda p: self._edit(p, self.editor.redo),
             "export.formats": lambda _p: {"formats": list(FORMATS)},
             "export.render": self.export_render,
             "export.write": self.export_write,
@@ -164,6 +193,24 @@ class EngineService:
 
     def transcript_get(self, params: dict[str, Any]) -> dict[str, Any]:
         return repo.get_transcript(self.db, _require(params, "project_id"), include_words=bool(params.get("include_words")))
+
+    def transcript_original(self, params: dict[str, Any]) -> dict[str, Any]:
+        project_id = _require(params, "project_id")
+        repo.get_project(self.db, project_id)
+        original = repo.get_original_transcript(self.db, project_id)
+        if original is None:
+            raise NotFound("This project has no transcript yet.")
+        return original
+
+    def _edit(self, params: dict[str, Any], operation: Callable[[str], str | None]) -> dict[str, Any]:
+        """Run a correction (or undo/redo) and return the updated transcript."""
+        project_id = _require(params, "project_id")
+        summary = operation(project_id)
+        transcript = repo.get_transcript(self.db, project_id, include_words=True)
+        if summary is not None:
+            self.notify("transcript.updated", {"project_id": project_id, "revision": transcript["revision"],
+                                               "summary": summary})
+        return {"summary": summary, "changed": summary is not None, "transcript": transcript}
 
     # ------------------------------------------------------------------ export
 

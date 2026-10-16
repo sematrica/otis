@@ -24,9 +24,32 @@ def render_txt(project: dict[str, Any], transcript: dict[str, Any], options: dic
         if model:
             lines.append(f"Transcribed with: {model}" + (f" ({backend})" if backend else ""))
         lines.append("")
-    for seg in transcript["segments"]:
-        text = seg["text"].strip()
-        if not text:
-            continue
-        lines.append(f"[{format_clock(seg['start'])}] {text}" if include_timestamps else text)
+    names = {sp["id"]: sp["display_name"] for sp in transcript.get("speakers") or []}
+    names.update({sp["id"]: sp["display_name"] for sp in transcript.get("merged_speakers") or []})
+    if names and options.get("speakers", True):
+        # One block per speaker turn, as in "[00:01:12] Speaker 1" + text.
+        previous = object()
+        block: list[str] = []
+        for seg in transcript["segments"]:
+            text = seg["text"].strip()
+            if not text:
+                continue
+            speaker = seg.get("speaker_id")
+            if speaker != previous:
+                if block:
+                    lines.append(" ".join(block))
+                    lines.append("")
+                    block = []
+                label = names.get(speaker, "Unknown speaker")
+                lines.append(f"[{format_clock(seg['start'])}] {label}" if include_timestamps else label)
+                previous = speaker
+            block.append(text)
+        if block:
+            lines.append(" ".join(block))
+    else:
+        for seg in transcript["segments"]:
+            text = seg["text"].strip()
+            if not text:
+                continue
+            lines.append(f"[{format_clock(seg['start'])}] {text}" if include_timestamps else text)
     return "\n".join(lines).rstrip("\n") + "\n"

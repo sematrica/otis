@@ -9,7 +9,7 @@ from typing import Any
 from ..asr.base import DecodeOptions, LoadOptions
 from ..asr.registry import AUTO_ORDER, BACKENDS, backend_class
 from ..errors import BackendUnavailable, InvalidParams, ModelNotInstalled
-from ..models.catalog import ModelSpec, get_spec
+from ..models.catalog import ModelSpec, get_spec, specs_of_kind
 from ..models.manager import ModelManager
 
 # Whisper's language codes (large-v3 vocabulary, includes Cantonese).
@@ -31,22 +31,27 @@ class ModePreset:
     cpu_compute_type: str
     #: What this mode does *not* do yet, shown verbatim in the UI.
     limitations: str = ""
+    #: Forced word alignment by default (Whisper's own word timings otherwise).
+    align: bool = True
 
 
 MODES: dict[str, ModePreset] = {
     "fast": ModePreset(
         id="fast",
         label="Fast",
-        description="Whisper Small with greedy decoding. Quickest; less accurate on difficult audio.",
+        description="Whisper Small with greedy decoding and speaker identification; word times from "
+        "Whisper. Quickest; less accurate on difficult audio.",
         family="small",
         beam_size=1,
         best_of=1,
         cpu_compute_type="int8",
+        align=False,
     ),
     "balanced": ModePreset(
         id="balanced",
         label="Balanced",
-        description="Whisper Large-v3 Turbo with beam search where the backend supports it.",
+        description="Whisper Large-v3 Turbo with beam search where the backend supports it, speaker "
+        "identification and forced word alignment.",
         family="large-v3-turbo",
         beam_size=5,
         best_of=5,
@@ -55,7 +60,8 @@ MODES: dict[str, ModePreset] = {
     "maximum": ModePreset(
         id="maximum",
         label="Maximum Accuracy",
-        description="Whisper Large-v3 with beam search where supported (float32 on the CPU backend).",
+        description="Whisper Large-v3 with beam search where supported (float32 on the CPU backend), "
+        "speaker identification and forced word alignment.",
         family="large-v3",
         beam_size=5,
         best_of=5,
@@ -106,6 +112,14 @@ def normalize_options(raw: dict[str, Any] | None) -> dict[str, Any]:
     if not 20.0 <= chunk_seconds <= 3600.0:
         raise InvalidParams("chunk_seconds must be between 20 and 3600.")
     vad = bool(raw.pop("vad", True))
+    diarize = _tristate(raw.pop("diarize", "auto"), "diarize")
+    align = _tristate(raw.pop("align", "auto" if MODES[mode].align else False), "align")
+    alignment_model = raw.pop("alignment_model", None) or None
+    if alignment_model is not None:
+        spec = get_spec(alignment_model)
+        if spec.kind != "alignment":
+            raise InvalidParams(f"'{alignment_model}' is not an alignment model.")
+    speakers = _speaker_bounds(raw.pop("speakers", None))
     if raw:
         raise InvalidParams(f"Unknown option(s): {', '.join(sorted(raw))}.")
     return {
@@ -116,7 +130,35 @@ def normalize_options(raw: dict[str, Any] | None) -> dict[str, Any]:
         "language": language,
         "chunk_seconds": chunk_seconds,
         "vad": vad,
+        "diarize": diarize,
+        "speakers": speakers,
+        "align": align,
+        "alignment_model": alignment_model,
     }
+
+
+def _tristate(value: Any, name: str) -> bool | str:
+    """True (required), False (off) or "auto" (when the model is installed)."""
+    if value in (True, False, "auto"):
+        return value
+    raise InvalidParams(f"Option '{name}' must be true, false or \"auto\".")
+
+
+def _speaker_bounds(value: Any) -> dict[str, int | None]:
+    value = dict(value or {})
+    out: dict[str, int | None] = {}
+    for key in ("num", "min", "max"):
+        v = value.pop(key, None)
+        if v is not None and (not isinstance(v, int) or isinstance(v, bool) or not 1 <= v <= 50):
+            raise InvalidParams(f"speakers.{key} must be a whole number from 1 to 50.")
+        out[key] = v
+    if value:
+        raise InvalidParams(f"Unknown speakers option(s): {', '.join(sorted(value))}.")
+    if out["num"] is not None and (out["min"] is not None or out["max"] is not None):
+        raise InvalidParams("Give either an exact number of speakers or a range, not both.")
+    if out["min"] is not None and out["max"] is not None and out["min"] > out["max"]:
+        raise InvalidParams("The minimum number of speakers is larger than the maximum.")
+    return out
 
 
 @dataclass
@@ -129,6 +171,14 @@ class ResolvedJob:
     decode: DecodeOptions
     chunk_seconds: float
     warnings: list[str] = field(default_factory=list)
+    #: Diarization model folder, or None when speakers are not identified.
+    diarization_dir: Path | None = None
+    diarization_skip_reason: str | None = None
+    speaker_bounds: dict[str, int | None] = field(default_factory=dict)
+    #: Installed alignment models that may be used (chosen per language once
+    #: the language is known), most preferred first.
+    alignment_candidates: list[tuple[ModelSpec, Path]] = field(default_factory=list)
+    alignment_skip_reason: str | None = None
 
     def describe(self) -> dict[str, Any]:
         return {
@@ -137,7 +187,23 @@ class ResolvedJob:
             "model": self.model,
             "chunk_seconds": self.chunk_seconds,
             "warnings": self.warnings,
+            "diarization": {
+                "enabled": self.diarization_dir is not None,
+                "skip_reason": self.diarization_skip_reason,
+                "speakers": {k: v for k, v in self.speaker_bounds.items() if v is not None},
+            },
+            "alignment": {
+                "enabled": bool(self.alignment_candidates),
+                "candidates": [spec.id for spec, _ in self.alignment_candidates],
+                "skip_reason": self.alignment_skip_reason,
+            },
         }
+
+    def alignment_model_for(self, language: str | None) -> tuple[ModelSpec, Path] | None:
+        for spec, path in self.alignment_candidates:
+            if not spec.languages or language in spec.languages:
+                return spec, path
+        return None
 
 
 def _candidate_specs(family: str, backend: str) -> list[ModelSpec]:
@@ -200,6 +266,9 @@ def resolve(options: dict[str, Any], models: ModelManager) -> ResolvedJob:
     if mode.limitations:
         warnings.append(mode.limitations)
 
+    diarization_dir, diarization_skip = _resolve_diarization(options, models)
+    alignment, alignment_skip = _resolve_alignment(options, models)
+
     decode = DecodeOptions(
         language=options["language"],
         beam_size=mode.beam_size if caps.beam_search else 1,
@@ -217,4 +286,56 @@ def resolve(options: dict[str, Any], models: ModelManager) -> ResolvedJob:
         decode=decode,
         chunk_seconds=options["chunk_seconds"],
         warnings=warnings,
+        diarization_dir=diarization_dir,
+        diarization_skip_reason=diarization_skip,
+        speaker_bounds=dict(options.get("speakers") or {}),
+        alignment_candidates=alignment,
+        alignment_skip_reason=alignment_skip,
     )
+
+
+#: Preference among installed alignment models (first match for the language wins).
+ALIGNMENT_PREFERENCE = ("alignment/en-conformer-medium", "alignment/en-conformer-small", "alignment/mms-300m")
+
+
+def _resolve_diarization(options: dict[str, Any], models: ModelManager) -> tuple[Path | None, str | None]:
+    setting = options.get("diarize", "auto")
+    if setting is False:
+        return None, "Speaker identification was turned off for this job."
+    installed = models.installed("diarization")
+    if installed:
+        return Path(models.status(installed[0])["path"]), None
+    spec = specs_of_kind("diarization")[0]
+    if setting is True:
+        raise ModelNotInstalled(
+            "The speaker identification model is not installed. Download it in Settings → Models.",
+            data={"model_id": spec.id, "display_name": spec.display_name,
+                  "approx_download_bytes": spec.approx_download_bytes},
+        )
+    return None, "The speaker identification model is not installed."
+
+
+def _resolve_alignment(options: dict[str, Any], models: ModelManager) -> tuple[list[tuple[ModelSpec, Path]], str | None]:
+    setting = options.get("align", "auto")
+    if setting is False:
+        return [], "Word alignment is off for this job; word times come from Whisper."
+    if options.get("alignment_model"):
+        spec = get_spec(options["alignment_model"])
+        path = models.require_installed(spec)
+        return [(spec, path)], None
+    installed = {spec.id: spec for spec in models.installed("alignment")}
+    order = [installed[i] for i in ALIGNMENT_PREFERENCE if i in installed]
+    order += [s for i, s in installed.items() if i not in ALIGNMENT_PREFERENCE]
+    language = options.get("language")
+    if language is not None:
+        order = [s for s in order if not s.languages or language in s.languages]
+    if order:
+        return [(s, Path(models.status(s)["path"])) for s in order], None
+    if setting is True:
+        suggestion = get_spec("alignment/en-conformer-medium" if language in (None, "en") else "alignment/mms-300m")
+        raise ModelNotInstalled(
+            "No word-alignment model for this language is installed. Download one in Settings → Models.",
+            data={"model_id": suggestion.id, "display_name": suggestion.display_name,
+                  "approx_download_bytes": suggestion.approx_download_bytes},
+        )
+    return [], "No word-alignment model is installed; word times come from Whisper."

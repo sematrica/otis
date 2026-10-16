@@ -63,6 +63,48 @@ def mlx_model_dir() -> Path:
     return path
 
 
+def _model_folder(var: str, required: tuple[str, ...], what: str) -> Path:
+    path = model_dir_from_env(var)
+    if path is None or not all(any(path.glob(name)) for name in required):
+        pytest.skip(f"{var} not set: {what} required")
+    return path
+
+
+@pytest.fixture(scope="session")
+def diarization_dir() -> Path:
+    """Installed diarization model folder (segmentation.onnx + embedding.onnx)."""
+    return _model_folder("VERBATIM_TEST_DIARIZATION_DIR", ("segmentation.onnx", "embedding.onnx"),
+                         "the speaker diarization models")
+
+
+@pytest.fixture(scope="session")
+def alignment_dir() -> Path:
+    """Installed English Conformer-CTC alignment model folder."""
+    return _model_folder("VERBATIM_TEST_ALIGNMENT_DIR", ("model.onnx", "tokens.txt"), "an English alignment model")
+
+
+@pytest.fixture(scope="session")
+def mms_dir() -> Path:
+    """Installed MMS multilingual alignment model folder."""
+    return _model_folder("VERBATIM_TEST_MMS_DIR", ("*.onnx",), "the MMS alignment model")
+
+
+@pytest.fixture(scope="session")
+def speaker_corpus() -> Path:
+    """Real speech with reference speaker annotations (scripts/fetch_speaker_corpus.py)."""
+    return _model_folder("VERBATIM_TEST_SPEAKER_CORPUS", ("sample.wav", "sample.rttm", "debug.train.rttm"),
+                         "the speaker corpus")
+
+
+@pytest.fixture(scope="session")
+def timed_speech():
+    from tests.support import espeak
+
+    if not espeak.available():
+        pytest.skip("libespeak-ng is required for speech with known word timings")
+    return espeak
+
+
 # ----------------------------------------------------------------------------- audio helpers
 
 

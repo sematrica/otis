@@ -9,10 +9,10 @@ from __future__ import annotations
 import json
 from typing import Any, Iterable
 
-from ..asr.merge import MergedSegment
 from ..audio.chunking import Chunk
 from ..errors import NotFound
 from ..media.probe import MediaInfo
+from ..transcript.model import TSegment
 from ..util.ids import new_id, parse_utc, utc_now
 from .db import Database
 
@@ -27,8 +27,11 @@ STAGES: list[tuple[str, str]] = [
     ("analyze", "Analyzing audio"),
     ("load_model", "Loading model"),
     ("transcribe", "Transcribing"),
+    ("diarize", "Identifying speakers"),
+    ("align", "Aligning words"),
     ("finalize", "Saving transcript"),
 ]
+STAGE_ORDINALS = {name: i for i, (name, _label) in enumerate(STAGES)}
 STAGE_LABELS = dict(STAGES)
 
 #: ETA is shown only after this much measured work in the current attempt.
@@ -344,6 +347,11 @@ def start_stage(db: Database, job_id: str, stage: str, *, unit: str | None = Non
                 done: float | None = None, detail: str | None = None) -> None:
     now = utc_now()
     with db.transaction() as conn:
+        # jobs created by an older engine lack the stages added since
+        conn.execute(
+            "INSERT OR IGNORE INTO job_stages (job_id, stage, ordinal, status) VALUES (?, ?, ?, 'pending')",
+            (job_id, stage, STAGE_ORDINALS.get(stage, len(STAGES))),
+        )
         conn.execute(
             """UPDATE job_stages SET status = 'running', started_at = ?, finished_at = NULL,
                    progress_unit = ?, progress_total = ?, progress_done = ?, baseline_done = ?, detail = ?
@@ -447,83 +455,186 @@ def complete_chunk(db: Database, job_id: str, index: int, result: dict[str, Any]
 # --------------------------------------------------------------------------- transcript
 
 
-def replace_transcript(db: Database, project_id: str, job_id: str, segments: list[MergedSegment],
-                       language: str | None) -> int:
-    """Atomically replace the project's transcript with a new recognition result."""
+def replace_transcript(db: Database, project_id: str, job_id: str, segments: list[TSegment],
+                       language: str | None, speakers: list[dict[str, Any]] | None = None) -> int:
+    """Atomically replace the project's transcript with a new AI result.
+
+    Speakers come from :func:`transcript.build.speakers_in_order`. The result
+    is also stored, unchanged, as the project's original transcript; user
+    corrections and their history from earlier results are discarded.
+    """
+    now = utc_now()
     with db.transaction() as conn:
+        conn.execute("DELETE FROM edits WHERE project_id = ?", (project_id,))
         conn.execute("DELETE FROM segments WHERE project_id = ?", (project_id,))
+        conn.execute("DELETE FROM speakers WHERE project_id = ?", (project_id,))
+        ids: dict[int, int] = {}
+        for sp in speakers or []:
+            cur = conn.execute(
+                """INSERT INTO speakers (project_id, label, name, origin, cluster_index, color_index, created_at)
+                   VALUES (?, ?, NULL, 'diarization', ?, ?, ?)""",
+                (project_id, sp["label"], sp["index"], sp.get("color_index", 0), now),
+            )
+            ids[sp["index"]] = cur.lastrowid
         for ordinal, seg in enumerate(segments):
+            speaker_id = ids.get(seg.speaker) if seg.speaker is not None else None
+            flags = []
+            for flag in seg.flags:
+                flag = dict(flag)
+                if "other_speakers" in flag:
+                    flag["other_speakers"] = [ids[o] for o in flag["other_speakers"] if o in ids]
+                flags.append(flag)
             cur = conn.execute(
                 """INSERT INTO segments (project_id, job_id, ordinal, start, end, original_text, text, language,
-                       avg_logprob, no_speech_prob, compression_ratio, temperature, chunk_index, flags_json)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                       avg_logprob, no_speech_prob, compression_ratio, temperature, chunk_index, speaker_id,
+                       original_speaker_id, speaker_confidence, flags_json)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
-                    project_id,
-                    job_id,
-                    ordinal,
-                    seg.start,
-                    seg.end,
-                    seg.text,
-                    seg.text,
-                    seg.language,
-                    seg.avg_logprob,
-                    seg.no_speech_prob,
-                    seg.compression_ratio,
-                    seg.temperature,
-                    seg.chunk_index,
-                    json.dumps(seg.flags),
+                    project_id, job_id, ordinal, seg.start, seg.end, seg.text, seg.text, seg.language,
+                    seg.avg_logprob, seg.no_speech_prob, seg.compression_ratio, seg.temperature, seg.chunk_index,
+                    speaker_id, speaker_id, seg.speaker_confidence, json.dumps(flags),
                 ),
             )
             segment_id = cur.lastrowid
             if seg.words:
                 conn.executemany(
-                    """INSERT INTO words (segment_id, ordinal, start, end, text, probability, timing_source)
-                       VALUES (?, ?, ?, ?, ?, ?, 'whisper')""",
-                    [(segment_id, i, w.start, w.end, w.text, w.probability) for i, w in enumerate(seg.words)],
+                    """INSERT INTO words (segment_id, ordinal, start, end, text, probability, timing_source,
+                           speaker_id, whisper_start, whisper_end, alignment_score, original_text)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    [
+                        (segment_id, i, w.start, w.end, w.text, w.probability, w.timing_source,
+                         ids.get(w.speaker) if w.speaker is not None else None,
+                         w.whisper_start, w.whisper_end, w.alignment_score, w.text)
+                        for i, w in enumerate(seg.words)
+                    ],
                 )
         conn.execute(
-            "UPDATE projects SET language = ?, updated_at = ? WHERE id = ?", (language, utc_now(), project_id)
+            """UPDATE projects SET language = ?, updated_at = ?, transcript_revision = transcript_revision + 1
+               WHERE id = ?""",
+            (language, now, project_id),
+        )
+        snapshot = _transcript_payload(conn, project_id, include_words=True)
+        conn.execute(
+            """INSERT INTO original_transcripts (project_id, job_id, created_at, content_json) VALUES (?, ?, ?, ?)
+               ON CONFLICT(project_id) DO UPDATE SET job_id = excluded.job_id, created_at = excluded.created_at,
+                   content_json = excluded.content_json""",
+            (project_id, job_id, now, json.dumps({"language": language, **snapshot})),
         )
     return len(segments)
 
 
-def get_transcript(db: Database, project_id: str, include_words: bool = False) -> dict[str, Any]:
-    project = get_project(db, project_id)
-    rows = db.query("SELECT * FROM segments WHERE project_id = ? ORDER BY ordinal", (project_id,))
+def _speaker_dict(row, stats: dict[int, tuple[int, float, float | None]]) -> dict[str, Any]:
+    count, seconds, first = stats.get(row["id"], (0, 0.0, None))
+    return {
+        "id": row["id"],
+        "label": row["label"],
+        "name": row["name"],
+        "display_name": row["name"] or row["label"],
+        "origin": row["origin"],
+        "color_index": row["color_index"],
+        "merged_into": row["merged_into"],
+        "segment_count": count,
+        "speaking_seconds": round(seconds, 3),
+        "first_start": first,
+    }
+
+
+def _segment_dict(r) -> dict[str, Any]:
+    return {
+        "id": r["id"],
+        "start": r["start"],
+        "end": r["end"],
+        "text": r["text"],
+        "original_text": r["original_text"],
+        "language": r["language"],
+        "avg_logprob": r["avg_logprob"],
+        "no_speech_prob": r["no_speech_prob"],
+        "compression_ratio": r["compression_ratio"],
+        "chunk_index": r["chunk_index"],
+        "speaker_id": r["speaker_id"],
+        "original_speaker_id": r["original_speaker_id"],
+        "speaker_confidence": r["speaker_confidence"],
+        "text_edited": bool(r["text_edited"]),
+        "speaker_edited": bool(r["speaker_edited"]),
+        "flags": json.loads(r["flags_json"]),
+    }
+
+
+def _word_dict(w) -> dict[str, Any]:
+    return {
+        "start": w["start"],
+        "end": w["end"],
+        "text": w["text"],
+        "probability": w["probability"],
+        "timing_source": w["timing_source"],
+        "speaker_id": w["speaker_id"],
+    }
+
+
+def _transcript_payload(conn, project_id: str, include_words: bool) -> dict[str, Any]:
+    rows = conn.execute("SELECT * FROM segments WHERE project_id = ? ORDER BY start, id", (project_id,)).fetchall()
     words_by_segment: dict[int, list[dict[str, Any]]] = {}
     if include_words and rows:
-        for w in db.query(
+        for w in conn.execute(
             """SELECT w.* FROM words w JOIN segments s ON s.id = w.segment_id
                WHERE s.project_id = ? ORDER BY w.segment_id, w.ordinal""",
             (project_id,),
         ):
-            words_by_segment.setdefault(w["segment_id"], []).append(
-                {"start": w["start"], "end": w["end"], "text": w["text"], "probability": w["probability"],
-                 "timing_source": w["timing_source"]}
-            )
+            words_by_segment.setdefault(w["segment_id"], []).append(_word_dict(w))
+    stats: dict[int, tuple[int, float, float | None]] = {}
     segments = []
-    for r in rows:
-        seg = {
-            "id": r["id"],
-            "ordinal": r["ordinal"],
-            "start": r["start"],
-            "end": r["end"],
-            "text": r["text"],
-            "original_text": r["original_text"],
-            "language": r["language"],
-            "avg_logprob": r["avg_logprob"],
-            "no_speech_prob": r["no_speech_prob"],
-            "compression_ratio": r["compression_ratio"],
-            "chunk_index": r["chunk_index"],
-            "speaker_id": r["speaker_id"],
-            "flags": json.loads(r["flags_json"]),
-        }
+    for ordinal, r in enumerate(rows):
+        seg = {**_segment_dict(r), "ordinal": ordinal}
         if include_words:
             seg["words"] = words_by_segment.get(r["id"], [])
         segments.append(seg)
+        if r["speaker_id"] is not None:
+            count, seconds, first = stats.get(r["speaker_id"], (0, 0.0, None))
+            stats[r["speaker_id"]] = (count + 1, seconds + max(0.0, r["end"] - r["start"]),
+                                      r["start"] if first is None else first)
+    everyone = [
+        _speaker_dict(sp, stats)
+        for sp in conn.execute("SELECT * FROM speakers WHERE project_id = ? ORDER BY id", (project_id,))
+    ]
+    # transcript order; speakers without segments (user-created, not used yet) last
+    everyone.sort(key=lambda sp: (sp["first_start"] is None, sp["first_start"] or 0.0, sp["id"]))
+    return {
+        "speakers": [sp for sp in everyone if sp["merged_into"] is None],
+        # merged away by the user; still referenced as the AI's original speaker
+        "merged_speakers": [sp for sp in everyone if sp["merged_into"] is not None],
+        "segments": segments,
+    }
+
+
+def history_state(conn, project_id: str) -> dict[str, Any]:
+    undo = conn.execute(
+        "SELECT summary FROM edits WHERE project_id = ? AND undone = 0 ORDER BY id DESC LIMIT 1", (project_id,)
+    ).fetchone()
+    redo = conn.execute(
+        "SELECT summary FROM edits WHERE project_id = ? AND undone = 1 ORDER BY id ASC LIMIT 1", (project_id,)
+    ).fetchone()
+    count = conn.execute("SELECT COUNT(*) FROM edits WHERE project_id = ? AND undone = 0", (project_id,)).fetchone()[0]
+    return {
+        "can_undo": undo is not None,
+        "can_redo": redo is not None,
+        "undo_summary": undo["summary"] if undo else None,
+        "redo_summary": redo["summary"] if redo else None,
+        "edit_count": count,
+    }
+
+
+def get_transcript(db: Database, project_id: str, include_words: bool = False) -> dict[str, Any]:
+    project = get_project(db, project_id)
+    with db.snapshot() as conn:
+        payload = _transcript_payload(conn, project_id, include_words)
+        history = history_state(conn, project_id)
+        revision = conn.execute("SELECT transcript_revision FROM projects WHERE id = ?", (project_id,)).fetchone()[0]
+        first = conn.execute(
+            "SELECT job_id FROM segments WHERE project_id = ? AND job_id IS NOT NULL LIMIT 1", (project_id,)
+        ).fetchone()
     # Settings of the job that produced this transcript (not necessarily the
     # project's latest job, which may have failed).
-    transcript_job_id = rows[0]["job_id"] if rows else None
+    transcript_job_id = first["job_id"] if first else None
     effective = None
     if transcript_job_id:
         job_row = db.query_one("SELECT effective_json FROM jobs WHERE id = ?", (transcript_job_id,))
@@ -534,8 +645,18 @@ def get_transcript(db: Database, project_id: str, include_words: bool = False) -
         "language": project["language"],
         "job_id": transcript_job_id,
         "effective": effective,
-        "segments": segments,
+        "revision": revision,
+        "history": history,
+        **payload,
     }
+
+
+def get_original_transcript(db: Database, project_id: str) -> dict[str, Any] | None:
+    row = db.query_one("SELECT * FROM original_transcripts WHERE project_id = ?", (project_id,))
+    if row is None:
+        return None
+    return {"project_id": project_id, "job_id": row["job_id"], "created_at": row["created_at"],
+            **json.loads(row["content_json"])}
 
 
 # --------------------------------------------------------------------------- settings

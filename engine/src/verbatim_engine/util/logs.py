@@ -26,5 +26,6 @@ def configure(log_dir: Path | None, name: str, level: int = logging.INFO) -> Non
         file_handler.setFormatter(fmt)
         root.addHandler(file_handler)
     # Third-party libraries are chatty at INFO.
-    for noisy in ("faster_whisper", "httpx", "huggingface_hub", "urllib3", "filelock"):
+    # (httpx2 would also log signed download URLs.)
+    for noisy in ("faster_whisper", "httpx", "httpx2", "httpcore2", "huggingface_hub", "urllib3", "filelock"):
         logging.getLogger(noisy).setLevel(logging.WARNING)

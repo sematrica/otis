@@ -1,11 +1,23 @@
 {
-  "id": 25,
+  "id": 30,
   "result": {
     "attempt": 1,
     "cancel_requested": false,
-    "created_at": "2026-10-15T04:40:26.855Z",
+    "created_at": "2026-10-16T04:01:32.060Z",
     "current_stage": "finalize",
     "effective": {
+      "alignment": {
+        "aligned": 2,
+        "enabled": true,
+        "failed": 0,
+        "model": {
+          "display_name": "English word alignment (Conformer-CTC Small)",
+          "id": "alignment/en-conformer-small"
+        },
+        "segments": 2,
+        "skipped": 0,
+        "wildcard_words": 0
+      },
       "backend": "faster-whisper",
       "chunk_seconds": 600.0,
       "chunking": {
@@ -14,7 +26,6 @@
         "target_seconds": 600.0
       },
       "decode": {
-        "backend": "faster-whisper",
         "beam_size": 5,
         "best_of": 5,
         "compression_ratio_threshold": 2.4,
@@ -34,10 +45,34 @@
         "vad": "silero (built-in)",
         "word_timestamps": true
       },
+      "diarization": {
+        "assigned_by_continuity": 0,
+        "bounds": {},
+        "clustering_seconds": 0.32,
+        "constrained_assignment": false,
+        "embedding_seconds": 0.145,
+        "embeddings": 2,
+        "embeddings_with_overlap": 0,
+        "enabled": true,
+        "estimated_speakers": 1,
+        "local_speakers": 2,
+        "method": "pyannote segmentation-3.0 + WeSpeaker ResNet34 + agglomerative clustering (ONNX Runtime)",
+        "overlap_seconds": 0,
+        "segmentation_seconds": 0.048,
+        "speakers_found": 1,
+        "speakers_in_transcript": 1,
+        "step_seconds": 1.0,
+        "threshold": 0.7045654963945799,
+        "total_seconds": 0.513,
+        "training_embeddings": 2,
+        "window_seconds": 10.0,
+        "windows": 2
+      },
       "load": {
         "compute_type": "int8",
         "cpu_threads": 4,
-        "device": "cpu"
+        "device": "cpu",
+        "random_seed": 0
       },
       "mode": "balanced",
       "model": {
@@ -48,41 +83,49 @@
       },
       "warnings": []
     },
-    "elapsed_seconds": 4.072,
+    "elapsed_seconds": 5.508,
     "error": null,
-    "finished_at": "2026-10-15T04:40:30.929Z",
-    "id": "9da29a65e644494a8d23f82edf20c192",
+    "finished_at": "2026-10-16T04:01:37.570Z",
+    "id": "a7e23f9de3c74e4d9ff9084062ab1a24",
     "kind": "transcribe",
     "mode": "balanced",
     "options": {
+      "align": "auto",
+      "alignment_model": null,
       "backend": "faster-whisper",
       "chunk_seconds": 600.0,
+      "diarize": "auto",
       "language": null,
       "mode": "balanced",
       "model_id": null,
       "model_path": "/Users/example/Models/faster-whisper-small",
+      "speakers": {
+        "max": null,
+        "min": null,
+        "num": null
+      },
       "vad": true
     },
-    "project_id": "3bb390ef217242898b976d7fd881b2da",
+    "project_id": "fc8cb360ed9742d0a418729982cd2f86",
     "project_title": "JFK",
     "stages": [
       {
         "detail": null,
-        "elapsed_seconds": 0.0,
+        "elapsed_seconds": 0.002,
         "eta_seconds": null,
-        "finished_at": "2026-10-15T04:40:26.997Z",
+        "finished_at": "2026-10-16T04:01:32.208Z",
         "fraction": null,
         "label": "Checking source",
         "progress": null,
         "stage": "prepare",
-        "started_at": "2026-10-15T04:40:26.997Z",
+        "started_at": "2026-10-16T04:01:32.206Z",
         "status": "completed"
       },
       {
         "detail": null,
-        "elapsed_seconds": 0.058,
+        "elapsed_seconds": 0.06,
         "eta_seconds": null,
-        "finished_at": "2026-10-15T04:40:27.056Z",
+        "finished_at": "2026-10-16T04:01:32.269Z",
         "fraction": 1.0,
         "label": "Extracting audio",
         "progress": {
@@ -91,14 +134,14 @@
           "unit": "seconds"
         },
         "stage": "extract",
-        "started_at": "2026-10-15T04:40:26.998Z",
+        "started_at": "2026-10-16T04:01:32.209Z",
         "status": "completed"
       },
       {
         "detail": "1 chunk(s)",
         "elapsed_seconds": 0.0,
         "eta_seconds": null,
-        "finished_at": "2026-10-15T04:40:27.056Z",
+        "finished_at": "2026-10-16T04:01:32.269Z",
         "fraction": 1.0,
         "label": "Analyzing audio",
         "progress": {
@@ -107,26 +150,26 @@
           "unit": "seconds"
         },
         "stage": "analyze",
-        "started_at": "2026-10-15T04:40:27.056Z",
+        "started_at": "2026-10-16T04:01:32.269Z",
         "status": "completed"
       },
       {
         "detail": "Custom model (small-int8) on faster-whisper (CPU)",
-        "elapsed_seconds": 0.426,
+        "elapsed_seconds": 0.496,
         "eta_seconds": null,
-        "finished_at": "2026-10-15T04:40:27.482Z",
+        "finished_at": "2026-10-16T04:01:32.765Z",
         "fraction": null,
         "label": "Loading model",
         "progress": null,
         "stage": "load_model",
-        "started_at": "2026-10-15T04:40:27.056Z",
+        "started_at": "2026-10-16T04:01:32.269Z",
         "status": "completed"
       },
       {
         "detail": "1 of 1 chunk(s) done",
-        "elapsed_seconds": 3.445,
+        "elapsed_seconds": 3.503,
         "eta_seconds": null,
-        "finished_at": "2026-10-15T04:40:30.927Z",
+        "finished_at": "2026-10-16T04:01:36.268Z",
         "fraction": 1.0,
         "label": "Transcribing",
         "progress": {
@@ -135,24 +178,56 @@
           "unit": "seconds"
         },
         "stage": "transcribe",
-        "started_at": "2026-10-15T04:40:27.482Z",
+        "started_at": "2026-10-16T04:01:32.765Z",
         "status": "completed"
       },
       {
-        "detail": "2 segment(s)",
-        "elapsed_seconds": 0.001,
+        "detail": "1 speaker(s) found",
+        "elapsed_seconds": 0.605,
         "eta_seconds": null,
-        "finished_at": "2026-10-15T04:40:30.929Z",
+        "finished_at": "2026-10-16T04:01:36.875Z",
+        "fraction": 1.0,
+        "label": "Identifying speakers",
+        "progress": {
+          "done": 11.0,
+          "total": 11.0,
+          "unit": "seconds"
+        },
+        "stage": "diarize",
+        "started_at": "2026-10-16T04:01:36.270Z",
+        "status": "completed"
+      },
+      {
+        "detail": "2 of 2 segment(s) aligned",
+        "elapsed_seconds": 0.684,
+        "eta_seconds": null,
+        "finished_at": "2026-10-16T04:01:37.566Z",
+        "fraction": 1.0,
+        "label": "Aligning words",
+        "progress": {
+          "done": 9.990000000000002,
+          "total": 9.990000000000002,
+          "unit": "seconds"
+        },
+        "stage": "align",
+        "started_at": "2026-10-16T04:01:36.882Z",
+        "status": "completed"
+      },
+      {
+        "detail": "2 segment(s), 1 speaker(s)",
+        "elapsed_seconds": 0.002,
+        "eta_seconds": null,
+        "finished_at": "2026-10-16T04:01:37.570Z",
         "fraction": null,
         "label": "Saving transcript",
         "progress": null,
         "stage": "finalize",
-        "started_at": "2026-10-15T04:40:30.928Z",
+        "started_at": "2026-10-16T04:01:37.568Z",
         "status": "completed"
       }
     ],
-    "started_at": "2026-10-15T04:40:26.857Z",
+    "started_at": "2026-10-16T04:01:32.062Z",
     "status": "completed",
-    "updated_at": "2026-10-15T04:40:30.929Z"
+    "updated_at": "2026-10-16T04:01:37.570Z"
   }
 }

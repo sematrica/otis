@@ -1,0 +1,10 @@
+{
+  "error": {
+    "code": "not_found",
+    "data": {
+      "speaker_id": 999999
+    },
+    "message": "Speaker not found."
+  },
+  "id": 77
+}

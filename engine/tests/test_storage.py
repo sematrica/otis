@@ -16,6 +16,7 @@ from verbatim_engine.models.manager import MANIFEST_NAME, ModelManager
 from verbatim_engine.paths import EnginePaths
 from verbatim_engine.storage import repo
 from verbatim_engine.storage.db import LATEST_VERSION, Database
+from verbatim_engine.transcript.model import TSegment
 
 
 @pytest.fixture()
@@ -55,10 +56,11 @@ def test_project_job_transcript_lifecycle(env, jfk_path):
     assert next(s for s in snap["stages"] if s["stage"] == "load_model")["fraction"] is None
 
     segs = [
-        MergedSegment(0.0, 2.0, "Hello there.", [Word(0.0, 0.5, " Hello", 0.9), Word(0.5, 2.0, " there.", 0.8)],
-                      -0.2, 0.01, 1.2, 0.0, 0, "en", []),
-        MergedSegment(2.5, 4.0, "Second line.", None, -0.3, 0.02, 1.1, 0.0, 0, "en",
-                      [{"type": "chunk_boundary", "method": "aligned"}]),
+        TSegment.from_merged(MergedSegment(
+            0.0, 2.0, "Hello there.", [Word(0.0, 0.5, " Hello", 0.9), Word(0.5, 2.0, " there.", 0.8)],
+            -0.2, 0.01, 1.2, 0.0, 0, "en", [])),
+        TSegment.from_merged(MergedSegment(2.5, 4.0, "Second line.", None, -0.3, 0.02, 1.1, 0.0, 0, "en",
+                                           [{"type": "chunk_boundary", "method": "aligned"}])),
     ]
     assert repo.replace_transcript(db, project["id"], job["id"], segs, "en") == 2
     repo.set_effective(db, job["id"], {"backend": "faster-whisper"})

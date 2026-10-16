@@ -195,7 +195,9 @@ def test_video_file_end_to_end(service, fw_model_dir, jfk_path, corpus, tmp_path
     job = service.jobs_start({"project_id": project["id"], "options": options_for(fw_model_dir)})
     job = wait_job(service, job["id"])
     assert job["status"] == "completed", job["error"]
-    assert all(s["status"] == "completed" for s in job["stages"])
+    # speaker and alignment models are not installed in this data folder
+    assert all(s["status"] == ("skipped" if s["stage"] in ("diarize", "align") else "completed") for s in job["stages"])
+    assert job["effective"]["diarization"]["enabled"] is False
     assert job["effective"]["backend"] == "faster-whisper"
     assert job["effective"]["decode"]["beam_size"] == 5
     assert job["effective"]["chunking"]["chunks"] == 1

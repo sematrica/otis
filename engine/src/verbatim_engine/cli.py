@@ -15,7 +15,6 @@ import json
 import logging
 import sys
 import threading
-import time
 from typing import Any
 
 from . import __version__
@@ -69,6 +68,10 @@ def _cmd_transcribe(args: argparse.Namespace) -> int:
                 "model_path": args.model_path,
                 "language": args.language,
                 "chunk_seconds": args.chunk_seconds,
+                "diarize": {"auto": "auto", "on": True, "off": False}[args.speakers],
+                "speakers": {"num": args.num_speakers, "min": args.min_speakers, "max": args.max_speakers},
+                **({"align": {"auto": "auto", "on": True, "off": False}[args.align]} if args.align else {}),
+                "alignment_model": args.alignment_model,
             }
         )
         resolved = resolve(options, service.models)
@@ -124,7 +127,9 @@ def _cmd_models(args: argparse.Namespace) -> int:
         print(f"models folder: {listing['models_dir']}")
         for model in listing["models"]:
             state = "installed" if model["status"]["installed"] else "not installed"
-            print(f"  {model['id']:<32} ~{model['approx_download_bytes'] / 1e9:4.1f} GB  {state}")
+            size = model["approx_download_bytes"]
+            shown = f"{size / 1e9:4.1f} GB" if size >= 1e9 else f"{size / 1e6:4.0f} MB"
+            print(f"  {model['id']:<34} ~{shown:>7}  {state}")
     finally:
         service.db.close()
     return 0
@@ -155,6 +160,14 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--model-path", default=None, help="custom model folder (requires --backend)")
     p.add_argument("--language", default=None, help="ISO code; default: detect")
     p.add_argument("--chunk-seconds", type=float, default=600.0)
+    p.add_argument("--speakers", default="auto", choices=["auto", "on", "off"],
+                   help="speaker identification (auto: when the model is installed)")
+    p.add_argument("--num-speakers", type=int, default=None, help="exact number of speakers, if known")
+    p.add_argument("--min-speakers", type=int, default=None)
+    p.add_argument("--max-speakers", type=int, default=None)
+    p.add_argument("--align", default=None, choices=["auto", "on", "off"],
+                   help="forced word alignment (default: per mode)")
+    p.add_argument("--alignment-model", default=None, help="catalog id of the alignment model to use")
     p.add_argument("--output", "-o", default=None)
     p.add_argument("--json", action="store_true", help="print job details to stderr")
     _add_data_dir(p)

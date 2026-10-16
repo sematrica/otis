@@ -3,25 +3,33 @@
   "result": {
     "attempt": 0,
     "cancel_requested": false,
-    "created_at": "2026-10-15T04:40:26.855Z",
+    "created_at": "2026-10-16T04:01:32.060Z",
     "current_stage": null,
     "effective": null,
     "elapsed_seconds": null,
     "error": null,
     "finished_at": null,
-    "id": "9da29a65e644494a8d23f82edf20c192",
+    "id": "a7e23f9de3c74e4d9ff9084062ab1a24",
     "kind": "transcribe",
     "mode": "balanced",
     "options": {
+      "align": "auto",
+      "alignment_model": null,
       "backend": "faster-whisper",
       "chunk_seconds": 600.0,
+      "diarize": "auto",
       "language": null,
       "mode": "balanced",
       "model_id": null,
       "model_path": "/Users/example/Models/faster-whisper-small",
+      "speakers": {
+        "max": null,
+        "min": null,
+        "num": null
+      },
       "vad": true
     },
-    "project_id": "3bb390ef217242898b976d7fd881b2da",
+    "project_id": "fc8cb360ed9742d0a418729982cd2f86",
     "project_title": "JFK",
     "stages": [
       {
@@ -90,6 +98,30 @@
         "eta_seconds": null,
         "finished_at": null,
         "fraction": null,
+        "label": "Identifying speakers",
+        "progress": null,
+        "stage": "diarize",
+        "started_at": null,
+        "status": "pending"
+      },
+      {
+        "detail": null,
+        "elapsed_seconds": null,
+        "eta_seconds": null,
+        "finished_at": null,
+        "fraction": null,
+        "label": "Aligning words",
+        "progress": null,
+        "stage": "align",
+        "started_at": null,
+        "status": "pending"
+      },
+      {
+        "detail": null,
+        "elapsed_seconds": null,
+        "eta_seconds": null,
+        "finished_at": null,
+        "fraction": null,
         "label": "Saving transcript",
         "progress": null,
         "stage": "finalize",
@@ -99,6 +131,6 @@
     ],
     "started_at": null,
     "status": "queued",
-    "updated_at": "2026-10-15T04:40:26.855Z"
+    "updated_at": "2026-10-16T04:01:32.060Z"
   }
 }

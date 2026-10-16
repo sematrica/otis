@@ -102,7 +102,7 @@ CREATE TABLE chunks (
 );
 
 -- original_text is what the recogniser produced and is never modified.
--- text is the current text (user corrections arrive in Stage 2).
+-- text is the current text (including user corrections).
 CREATE TABLE segments (
     id                INTEGER PRIMARY KEY,
     project_id        TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -142,7 +142,88 @@ CREATE TABLE settings (
 );
 """
 
-MIGRATIONS: list[tuple[int, str]] = [(1, SCHEMA_V1)]
+# Stage 2: speakers, per-word speaker and alignment data, an immutable copy of
+# the AI-generated transcript, and an edit history for undo/redo.
+# The segments table is rebuilt (SQLite cannot drop a UNIQUE constraint):
+# segment order is now by time, so splitting or merging segments never has
+# to renumber the rest of the transcript.
+SCHEMA_V2 = """
+CREATE TABLE speakers (
+    id            INTEGER PRIMARY KEY,
+    project_id    TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    label         TEXT NOT NULL,
+    name          TEXT,
+    origin        TEXT NOT NULL CHECK (origin IN ('diarization','user')),
+    cluster_index INTEGER,
+    color_index   INTEGER NOT NULL DEFAULT 0,
+    merged_into   INTEGER REFERENCES speakers(id) ON DELETE SET NULL,
+    created_at    TEXT NOT NULL
+);
+CREATE INDEX speakers_by_project ON speakers(project_id);
+
+CREATE TABLE segments_v2 (
+    id                  INTEGER PRIMARY KEY,
+    project_id          TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    job_id              TEXT REFERENCES jobs(id) ON DELETE SET NULL,
+    ordinal             INTEGER NOT NULL,
+    start               REAL NOT NULL,
+    end                 REAL NOT NULL,
+    original_text       TEXT NOT NULL,
+    text                TEXT NOT NULL,
+    language            TEXT,
+    avg_logprob         REAL,
+    no_speech_prob      REAL,
+    compression_ratio   REAL,
+    temperature         REAL,
+    chunk_index         INTEGER,
+    speaker_id          INTEGER REFERENCES speakers(id) ON DELETE SET NULL,
+    original_speaker_id INTEGER REFERENCES speakers(id) ON DELETE SET NULL,
+    speaker_confidence  REAL,
+    text_edited         INTEGER NOT NULL DEFAULT 0,
+    speaker_edited      INTEGER NOT NULL DEFAULT 0,
+    flags_json          TEXT NOT NULL DEFAULT '[]'
+);
+INSERT INTO segments_v2 (id, project_id, job_id, ordinal, start, end, original_text, text, language, avg_logprob,
+                         no_speech_prob, compression_ratio, temperature, chunk_index, flags_json)
+    SELECT id, project_id, job_id, ordinal, start, end, original_text, text, language, avg_logprob,
+           no_speech_prob, compression_ratio, temperature, chunk_index, flags_json
+    FROM segments;
+DROP TABLE segments;
+ALTER TABLE segments_v2 RENAME TO segments;
+CREATE INDEX segments_by_time ON segments(project_id, start);
+
+ALTER TABLE words ADD COLUMN speaker_id INTEGER REFERENCES speakers(id) ON DELETE SET NULL;
+ALTER TABLE words ADD COLUMN whisper_start REAL;
+ALTER TABLE words ADD COLUMN whisper_end REAL;
+ALTER TABLE words ADD COLUMN alignment_score REAL;
+ALTER TABLE words ADD COLUMN original_text TEXT;
+UPDATE words SET original_text = text;
+
+CREATE TABLE original_transcripts (
+    project_id   TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+    job_id       TEXT,
+    created_at   TEXT NOT NULL,
+    content_json TEXT NOT NULL
+);
+
+CREATE TABLE edits (
+    id          INTEGER PRIMARY KEY,
+    project_id  TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    kind        TEXT NOT NULL,
+    summary     TEXT NOT NULL,
+    before_json TEXT NOT NULL,
+    after_json  TEXT NOT NULL,
+    undone      INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL
+);
+CREATE INDEX edits_by_project ON edits(project_id, id);
+
+ALTER TABLE projects ADD COLUMN transcript_revision INTEGER NOT NULL DEFAULT 0;
+"""
+
+#: (version, script, rebuilds_tables). Table rebuilds run with foreign-key
+#: enforcement off, as SQLite requires, and are checked afterwards.
+MIGRATIONS: list[tuple[int, str, bool]] = [(1, SCHEMA_V1, False), (2, SCHEMA_V2, True)]
 LATEST_VERSION = MIGRATIONS[-1][0]
 
 
@@ -165,9 +246,13 @@ class Database:
                 raise RuntimeError(
                     f"Database schema version {current} is newer than this engine supports ({LATEST_VERSION})."
                 )
-            for version, sql in MIGRATIONS:
+            for version, sql, rebuilds in MIGRATIONS:
                 if version <= current:
                     continue
+                if rebuilds:
+                    # must be set outside a transaction; otherwise dropping the
+                    # old table would cascade-delete rows that reference it
+                    self._conn.execute("PRAGMA foreign_keys=OFF")
                 self._conn.execute("BEGIN IMMEDIATE")
                 try:
                     # re-check inside the write lock: another process may have migrated
@@ -176,11 +261,18 @@ class Database:
                         continue
                     for statement in _split_sql(sql):
                         self._conn.execute(statement)
+                    if rebuilds:
+                        problems = self._conn.execute("PRAGMA foreign_key_check").fetchall()
+                        if problems:
+                            raise RuntimeError(f"Migration {version} left broken references: {problems[:5]}")
                     self._conn.execute(f"PRAGMA user_version = {int(version)}")
                     self._conn.execute("COMMIT")
                 except BaseException:
                     self._conn.execute("ROLLBACK")
                     raise
+                finally:
+                    if rebuilds:
+                        self._conn.execute("PRAGMA foreign_keys=ON")
 
     @property
     def schema_version(self) -> int:
@@ -197,6 +289,16 @@ class Database:
                 self._conn.execute("ROLLBACK")
                 raise
             else:
+                self._conn.execute("COMMIT")
+
+    @contextmanager
+    def snapshot(self) -> Iterator[sqlite3.Connection]:
+        """A read transaction: consistent view, no write lock."""
+        with self._lock:
+            self._conn.execute("BEGIN DEFERRED")
+            try:
+                yield self._conn
+            finally:
                 self._conn.execute("COMMIT")
 
     def execute(self, sql: str, params: Sequence[Any] | dict[str, Any] = ()) -> sqlite3.Cursor:
