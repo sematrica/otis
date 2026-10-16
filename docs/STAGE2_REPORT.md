@@ -37,7 +37,7 @@ Out of scope (later stages): verification passes, other export formats, full-tex
 | GitHub Actions, Ubuntu 24.04 | Everything above, plus the MMS multilingual aligner (HuggingFace is not reachable from the dev container) and the word-timing benchmark of every aligner. Models downloaded through the engine's own download path. |
 | GitHub Actions, macOS 15 (Apple M1) | Engine suite with faster-whisper, MLX, diarization and alignment; Swift build and tests (fixtures, a real two-speaker transcription driven from the Swift client with rename, reassign, split, undo and redo); app bundle; packaged-app self-tests including a two-person call with speakers, aligned words, a rename and its undo. |
 
-Test counts (CI, final Stage 2 commit):
+Test counts ([CI run 16](https://github.com/sematrica/otis/actions/runs/38971835235), final Stage 2 code, both jobs green):
 
 | Suite | Linux | macOS |
 |-------|------:|------:|
@@ -136,7 +136,7 @@ Whisper's (unit test, ±0.15 s jittered input times), MMS measured 20 ms
 The boundary rule for connected speech was fitted on two voices and checked on
 four others. On real telephone speech the Small aligner initially failed on
 most segments; two defects were found and fixed (below), after which every
-segment of the 30 s call aligned (76–80 words, depending on the Whisper run).
+segment of the 30 s call aligned (74–80 words, depending on the Whisper run).
 
 ### Speed and memory (Linux container, 4 vCPU; not the target Mac)
 
