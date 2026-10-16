@@ -158,6 +158,47 @@ public struct ErrorInfo: Codable, Hashable, Sendable {
     public var message: String?
 }
 
+/// An option that is on, off, or decided by the engine ("auto": used when the
+/// model it needs is installed). Encoded as `true`, `false` or `"auto"`.
+public enum Tristate: Hashable, Sendable, Codable {
+    case on, off, auto
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let value = try? container.decode(Bool.self) {
+            self = value ? .on : .off
+        } else {
+            let text = try container.decode(String.self)
+            guard text == "auto" else {
+                throw DecodingError.dataCorruptedError(in: container, debugDescription: "unexpected value \(text)")
+            }
+            self = .auto
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .on: try container.encode(true)
+        case .off: try container.encode(false)
+        case .auto: try container.encode("auto")
+        }
+    }
+}
+
+/// What the user knows about the number of speakers (all nil: estimate).
+public struct SpeakerBounds: Codable, Hashable, Sendable {
+    public var num: Int?
+    public var min: Int?
+    public var max: Int?
+
+    public init(num: Int? = nil, min: Int? = nil, max: Int? = nil) {
+        self.num = num
+        self.min = min
+        self.max = max
+    }
+}
+
 public struct JobOptions: Codable, Hashable, Sendable {
     public var mode: String
     public var backend: String
@@ -166,9 +207,14 @@ public struct JobOptions: Codable, Hashable, Sendable {
     public var language: String?
     public var chunkSeconds: Double?
     public var vad: Bool?
+    public var diarize: Tristate?
+    public var speakers: SpeakerBounds?
+    public var align: Tristate?
+    public var alignmentModel: String?
 
     public init(mode: String = "balanced", backend: String = "auto", modelId: String? = nil, modelPath: String? = nil,
-                language: String? = nil, chunkSeconds: Double? = nil, vad: Bool? = nil) {
+                language: String? = nil, chunkSeconds: Double? = nil, vad: Bool? = nil, diarize: Tristate? = nil,
+                speakers: SpeakerBounds? = nil, align: Tristate? = nil, alignmentModel: String? = nil) {
         self.mode = mode
         self.backend = backend
         self.modelId = modelId
@@ -176,6 +222,10 @@ public struct JobOptions: Codable, Hashable, Sendable {
         self.language = language
         self.chunkSeconds = chunkSeconds
         self.vad = vad
+        self.diarize = diarize
+        self.speakers = speakers
+        self.align = align
+        self.alignmentModel = alignmentModel
     }
 }
 
@@ -214,6 +264,8 @@ public struct TranscriptionMode: Codable, Hashable, Sendable, Identifiable {
     public var bestOf: Int
     public var cpuComputeType: String
     public var limitations: String
+    /// Forced word alignment by default in this mode.
+    public var align: Bool?
 }
 
 public struct ModesResult: Codable, Sendable { public var modes: [TranscriptionMode] }
@@ -226,12 +278,25 @@ public struct ResolvedModel: Codable, Hashable, Sendable {
 }
 
 public struct Preflight: Codable, Hashable, Sendable {
+    public struct Diarization: Codable, Hashable, Sendable {
+        public var enabled: Bool
+        public var skipReason: String?
+    }
+
+    public struct Alignment: Codable, Hashable, Sendable {
+        public var enabled: Bool
+        public var candidates: [String]
+        public var skipReason: String?
+    }
+
     public struct Resolved: Codable, Hashable, Sendable {
         public var mode: String
         public var backend: String
         public var model: ResolvedModel
         public var chunkSeconds: Double
         public var warnings: [String]
+        public var diarization: Diarization?
+        public var alignment: Alignment?
     }
 
     public var options: JobOptions
@@ -245,7 +310,9 @@ public struct Word: Codable, Hashable, Sendable {
     public var end: Double?
     public var text: String
     public var probability: Double?
+    /// "whisper", "alignment", "wildcard" or "interpolated".
     public var timingSource: String?
+    public var speakerId: Int?
 }
 
 public struct Segment: Codable, Hashable, Sendable, Identifiable {
@@ -261,11 +328,49 @@ public struct Segment: Codable, Hashable, Sendable, Identifiable {
     public var compressionRatio: Double?
     public var chunkIndex: Int?
     public var speakerId: Int?
+    /// The diarization's speaker for this segment (kept when the user changes it).
+    public var originalSpeakerId: Int?
+    public var speakerConfidence: Double?
+    public var textEdited: Bool?
+    public var speakerEdited: Bool?
     public var flags: [JSONValue]
     public var words: [Word]?
 
     /// Flag types recorded by the engine (e.g. "chunk_boundary").
     public var flagTypes: [String] { flags.compactMap { $0["type"]?.stringValue } }
+
+    public func flag(_ type: String) -> JSONValue? {
+        flags.first { $0["type"]?.stringValue == type }
+    }
+
+    public var isTextEdited: Bool { textEdited ?? false }
+    public var isSpeakerEdited: Bool { speakerEdited ?? false }
+}
+
+public struct Speaker: Codable, Hashable, Sendable, Identifiable {
+    public var id: Int
+    /// "Speaker 1", "Speaker 2", ... in order of first appearance.
+    public var label: String
+    /// A name the user gave; never set automatically.
+    public var name: String?
+    public var displayName: String
+    /// "diarization" or "user".
+    public var origin: String
+    public var colorIndex: Int
+    public var mergedInto: Int?
+    public var segmentCount: Int
+    public var speakingSeconds: Double
+    public var firstStart: Double?
+}
+
+public struct EditHistory: Codable, Hashable, Sendable {
+    public var canUndo: Bool
+    public var canRedo: Bool
+    public var undoSummary: String?
+    public var redoSummary: String?
+    public var editCount: Int
+
+    public static let empty = EditHistory(canUndo: false, canRedo: false, undoSummary: nil, redoSummary: nil, editCount: 0)
 }
 
 public struct Transcript: Codable, Hashable, Sendable {
@@ -273,7 +378,67 @@ public struct Transcript: Codable, Hashable, Sendable {
     public var language: String?
     public var jobId: String?
     public var effective: JSONValue?
+    public var revision: Int
+    public var history: EditHistory
+    public var speakers: [Speaker]
+    public var mergedSpeakers: [Speaker]
     public var segments: [Segment]
+
+    enum CodingKeys: String, CodingKey {
+        case projectId, language, jobId, effective, revision, history, speakers, mergedSpeakers, segments
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        projectId = try c.decode(String.self, forKey: .projectId)
+        language = try c.decodeIfPresent(String.self, forKey: .language)
+        jobId = try c.decodeIfPresent(String.self, forKey: .jobId)
+        effective = try c.decodeIfPresent(JSONValue.self, forKey: .effective)
+        revision = try c.decodeIfPresent(Int.self, forKey: .revision) ?? 0
+        history = try c.decodeIfPresent(EditHistory.self, forKey: .history) ?? .empty
+        speakers = try c.decodeIfPresent([Speaker].self, forKey: .speakers) ?? []
+        mergedSpeakers = try c.decodeIfPresent([Speaker].self, forKey: .mergedSpeakers) ?? []
+        segments = try c.decode([Segment].self, forKey: .segments)
+    }
+
+    /// Any speaker by id, including ones the user merged away.
+    public func speaker(_ id: Int?) -> Speaker? {
+        guard let id else { return nil }
+        return speakers.first { $0.id == id } ?? mergedSpeakers.first { $0.id == id }
+    }
+}
+
+/// The AI-generated transcript as first stored; corrections never change it.
+public struct OriginalTranscript: Codable, Hashable, Sendable {
+    public var projectId: String
+    public var jobId: String?
+    public var createdAt: String
+    public var language: String?
+    public var speakers: [Speaker]
+    public var segments: [Segment]
+}
+
+/// Result of a correction, undo or redo.
+public struct EditResult: Codable, Hashable, Sendable {
+    public var summary: String?
+    public var changed: Bool
+    public var transcript: Transcript
+}
+
+public struct EditRecord: Codable, Hashable, Sendable, Identifiable {
+    public var id: Int
+    public var kind: String
+    public var summary: String
+    public var undone: Bool
+    public var createdAt: String
+}
+
+public struct EditHistoryResult: Codable, Sendable { public var edits: [EditRecord] }
+
+public struct TranscriptUpdated: Codable, Hashable, Sendable {
+    public var projectId: String
+    public var revision: Int
+    public var summary: String?
 }
 
 public struct ExportRendered: Codable, Hashable, Sendable {
@@ -302,7 +467,15 @@ public struct ModelEntry: Codable, Hashable, Sendable, Identifiable {
     public var backend: String
     public var family: String
     public var displayName: String
-    public var repoId: String
+    /// HuggingFace repository, or nil for models downloaded from fixed URLs.
+    public var repoId: String?
+    /// "asr", "diarization" or "alignment".
+    public var kind: String?
+    public var license: String?
+    /// Supported language codes; empty means any language.
+    public var languages: [String]?
+    public var homepage: String?
+    public var files: [ModelFile]?
     public var parameters: String
     public var approxDownloadBytes: Int64
     public var memoryEstimates: [String: Int64]
@@ -310,6 +483,23 @@ public struct ModelEntry: Codable, Hashable, Sendable, Identifiable {
     public var revision: String?
     public var notes: String
     public var status: ModelStatus
+}
+
+public struct ModelFile: Codable, Hashable, Sendable {
+    public var url: String
+    public var size: Int64
+    public var sha256: String
+}
+
+public extension ModelEntry {
+    var modelKind: String { kind ?? "asr" }
+
+    /// Where the files come from, for confirmation dialogs.
+    var sourceDescription: String {
+        if let repoId { return "huggingface.co/\(repoId)" }
+        if let host = files?.first.flatMap({ URL(string: $0.url)?.host }) { return host }
+        return "the model's publisher"
+    }
 }
 
 public struct ModelDownload: Codable, Hashable, Sendable {

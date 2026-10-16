@@ -20,7 +20,7 @@ jobs:
   engine-linux:
     name: Engine (Linux, real Whisper Small)
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -39,20 +39,40 @@ jobs:
         with:
           path: ${{ runner.temp }}/vdata/models
           key: models-linux-${{ hashFiles('engine/src/verbatim_engine/models/catalog.py') }}
-      - name: Download Whisper Small through the engine's own download path
+      - name: Download Whisper Small, speaker and alignment models through the engine's own download path
         run: |
-          test -f "$RUNNER_TEMP/vdata/models/faster-whisper/small/verbatim-model.json" \
-            || uv run --project engine verbatim-engine download-model faster-whisper/small --data-dir "$RUNNER_TEMP/vdata"
+          for model in faster-whisper/small diarization/pyannote-wespeaker alignment/en-conformer-small \
+                       alignment/en-conformer-medium alignment/mms-300m; do
+            test -f "$RUNNER_TEMP/vdata/models/$model/verbatim-model.json" \
+              || uv run --project engine verbatim-engine download-model "$model" --data-dir "$RUNNER_TEMP/vdata" > /dev/null
+          done
+          du -sh "$RUNNER_TEMP"/vdata/models/*/*
+      - name: Fetch the speaker corpus (pinned, checksummed)
+        run: uv run --project engine python engine/scripts/fetch_speaker_corpus.py "$RUNNER_TEMP/speaker-corpus"
       - name: Real-model end-to-end tests
         env:
           VERBATIM_TEST_MODEL_DIR: ${{ runner.temp }}/vdata/models/faster-whisper/small
+          VERBATIM_TEST_DIARIZATION_DIR: ${{ runner.temp }}/vdata/models/diarization/pyannote-wespeaker
+          VERBATIM_TEST_ALIGNMENT_DIR: ${{ runner.temp }}/vdata/models/alignment/en-conformer-small
+          VERBATIM_TEST_MMS_DIR: ${{ runner.temp }}/vdata/models/alignment/mms-300m
+          VERBATIM_TEST_SPEAKER_CORPUS: ${{ runner.temp }}/speaker-corpus
           VERBATIM_TEST_REPORT: ${{ runner.temp }}/accuracy-linux.json
-        run: uv run --project engine pytest engine/tests -m model -q -s
+        run: uv run --project engine pytest engine/tests -m model -q -s -rs
+      - name: Word-timestamp benchmark (synthetic speech with known word times)
+        working-directory: engine
+        run: >-
+          uv run python scripts/benchmark_word_timing.py --whisper "$RUNNER_TEMP/vdata/models/faster-whisper/small"
+          --aligner "nemo:$RUNNER_TEMP/vdata/models/alignment/en-conformer-small"
+          --aligner "nemo:$RUNNER_TEMP/vdata/models/alignment/en-conformer-medium"
+          --aligner "mms:$RUNNER_TEMP/vdata/models/alignment/mms-300m"
+          --voice en-us --voice en-us+f3 --voice en-gb-scotland --json "$RUNNER_TEMP/word-timing-linux.json"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: accuracy-linux
-          path: ${{ runner.temp }}/accuracy-linux.json
+          path: |
+            ${{ runner.temp }}/accuracy-linux.json
+            ${{ runner.temp }}/word-timing-linux.json
           if-no-files-found: ignore
 
   macos:
@@ -72,6 +92,8 @@ jobs:
           sysctl -n machdep.cpu.brand_string hw.memsize hw.perflevel0.physicalcpu || true
       - name: Sync engine environment
         run: uv sync --project engine --extra dev --python 3.12
+      - name: Install espeak-ng (speech with known word timings for tests)
+        run: brew install espeak-ng
       - name: Engine unit tests
         run: uv run --project engine pytest engine/tests -m "not model" -q
       - name: Build Swift package
@@ -85,22 +107,30 @@ jobs:
         with:
           path: ${{ runner.temp }}/vdata/models
           key: models-macos-${{ hashFiles('engine/src/verbatim_engine/models/catalog.py') }}
-      - name: Download Whisper Small (faster-whisper and MLX) through the engine
+      - name: Download Whisper Small (faster-whisper and MLX), speaker and alignment models through the engine
         run: |
-          for model in faster-whisper/small mlx/small; do
+          for model in faster-whisper/small mlx/small diarization/pyannote-wespeaker alignment/en-conformer-small; do
             test -f "$RUNNER_TEMP/vdata/models/$model/verbatim-model.json" \
-              || uv run --project engine verbatim-engine download-model "$model" --data-dir "$RUNNER_TEMP/vdata"
+              || uv run --project engine verbatim-engine download-model "$model" --data-dir "$RUNNER_TEMP/vdata" > /dev/null
           done
-      - name: Engine real-model tests (faster-whisper and MLX)
+      - name: Fetch the speaker corpus (pinned, checksummed)
+        run: uv run --project engine python engine/scripts/fetch_speaker_corpus.py "$RUNNER_TEMP/speaker-corpus"
+      - name: Engine real-model tests (faster-whisper, MLX, speakers, alignment)
         env:
           VERBATIM_TEST_MODEL_DIR: ${{ runner.temp }}/vdata/models/faster-whisper/small
           VERBATIM_TEST_MLX_MODEL_DIR: ${{ runner.temp }}/vdata/models/mlx/small
+          VERBATIM_TEST_DIARIZATION_DIR: ${{ runner.temp }}/vdata/models/diarization/pyannote-wespeaker
+          VERBATIM_TEST_ALIGNMENT_DIR: ${{ runner.temp }}/vdata/models/alignment/en-conformer-small
+          VERBATIM_TEST_SPEAKER_CORPUS: ${{ runner.temp }}/speaker-corpus
           VERBATIM_TEST_REPORT: ${{ runner.temp }}/accuracy-macos.json
         run: uv run --project engine pytest engine/tests -m model -q -s -rs
-      - name: Swift tests (fixtures + real engine + real transcription)
+      - name: Swift tests (fixtures + real engine + real transcription and corrections)
         env:
           VERBATIM_ENGINE_PYTHON: ${{ github.workspace }}/engine/.venv/bin/python
           VERBATIM_TEST_MODEL_DIR: ${{ runner.temp }}/vdata/models/faster-whisper/small
+          VERBATIM_TEST_DIARIZATION_DIR: ${{ runner.temp }}/vdata/models/diarization/pyannote-wespeaker
+          VERBATIM_TEST_ALIGNMENT_DIR: ${{ runner.temp }}/vdata/models/alignment/en-conformer-small
+          VERBATIM_TEST_SPEAKER_CORPUS: ${{ runner.temp }}/speaker-corpus
         run: swift test --package-path app
       - name: Build Verbatim.app
         run: scripts/build_app.sh

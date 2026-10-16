@@ -87,7 +87,7 @@ struct ImportPanel: View {
             Button("Download \(ByteSize.string(entry.approxDownloadBytes))") { Task { await model.download(entry) } }
             Button("Cancel", role: .cancel) {}
         } message: { entry in
-            Text("About \(ByteSize.string(entry.approxDownloadBytes)) will be downloaded from huggingface.co/\(entry.repoId) "
+            Text("About \(ByteSize.string(entry.approxDownloadBytes)) will be downloaded from \(entry.sourceDescription) "
                  + "into \(model.models?.modelsDir ?? "the models folder"). Nothing is downloaded without your confirmation.")
         }
     }

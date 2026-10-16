@@ -56,7 +56,7 @@ private struct ModelsSettings: View {
             Button("Download \(ByteSize.string(entry.approxDownloadBytes))") { Task { await model.download(entry) } }
             Button("Cancel", role: .cancel) {}
         } message: { entry in
-            Text("About \(ByteSize.string(entry.approxDownloadBytes)) from huggingface.co/\(entry.repoId) "
+            Text("About \(ByteSize.string(entry.approxDownloadBytes)) from \(entry.sourceDescription) "
                  + "will be stored in \(model.models?.modelsDir ?? "the models folder").")
         }
         .confirmationDialog(

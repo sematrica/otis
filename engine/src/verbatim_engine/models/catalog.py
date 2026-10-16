@@ -212,7 +212,8 @@ ALIGNMENT_MODELS: tuple[ModelSpec, ...] = (
         parameters="300M",
         approx_download_bytes=int(1.26 * GB),
         memory_estimates={"float32": int(2.5 * GB)},
-        allow_patterns=("*.onnx",),
+        # the repository's only model file (an ONNX export of torchaudio's MMS_FA)
+        allow_patterns=("04ac86b67129634da93aea76e0147ef3.onnx",),
         required_files=("*.onnx",),
         license="CC BY-NC 4.0 (Meta MMS) - non-commercial use only",
         homepage="https://huggingface.co/deskpai/ctc_forced_aligner",

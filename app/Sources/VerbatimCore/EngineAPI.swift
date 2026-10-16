@@ -22,6 +22,37 @@ public struct ModelsDirParams: Encodable, Sendable {
     enum CodingKeys: String, CodingKey { case modelsDir }
 }
 
+public struct RenameSpeakerParams: Encodable, Sendable {
+    public let projectId: String
+    public let speakerId: Int
+    public let name: String?
+    // Encode an explicit null: clearing the name restores the speaker's label.
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(projectId, forKey: .projectId)
+        try container.encode(speakerId, forKey: .speakerId)
+        try container.encode(name, forKey: .name)
+    }
+    enum CodingKeys: String, CodingKey { case projectId, speakerId, name }
+}
+public struct CreateSpeakerParams: Encodable, Sendable { public let projectId: String; public let name: String? }
+public struct MergeSpeakersParams: Encodable, Sendable { public let projectId: String; public let speakerIds: [Int]; public let into: Int }
+public struct AssignSpeakerParams: Encodable, Sendable {
+    public let projectId: String
+    public let segmentIds: [Int]
+    public let speakerId: Int?
+    public let newSpeakerName: String?
+}
+public struct SplitSegmentParams: Encodable, Sendable { public let projectId: String; public let segmentId: Int; public let wordIndex: Int }
+public struct MergeSegmentsParams: Encodable, Sendable { public let projectId: String; public let segmentIds: [Int] }
+public struct EditTextParams: Encodable, Sendable { public let projectId: String; public let segmentId: Int; public let text: String }
+public struct MarkUncertainParams: Encodable, Sendable {
+    public let projectId: String
+    public let segmentId: Int
+    public let uncertain: Bool
+    public let note: String?
+}
+
 public struct ExportOptions: Codable, Hashable, Sendable {
     public var timestamps: Bool
     public var header: Bool
@@ -96,6 +127,68 @@ public extension EngineClient {
     func transcript(projectId: String, includeWords: Bool = false) async throws -> Transcript {
         try await call("transcript.get", params: TranscriptParams(projectId: projectId, includeWords: includeWords),
                        as: Transcript.self, timeout: .seconds(120))
+    }
+
+    func originalTranscript(projectId: String) async throws -> OriginalTranscript {
+        try await call("transcript.original", params: ProjectIDParams(projectId: projectId), as: OriginalTranscript.self,
+                       timeout: .seconds(120))
+    }
+
+    func editHistory(projectId: String) async throws -> [EditRecord] {
+        try await call("transcript.history", params: ProjectIDParams(projectId: projectId), as: EditHistoryResult.self).edits
+    }
+
+    // Corrections. Each returns the updated transcript (with words).
+
+    func renameSpeaker(projectId: String, speakerId: Int, name: String?) async throws -> EditResult {
+        try await edit("transcript.renameSpeaker", RenameSpeakerParams(projectId: projectId, speakerId: speakerId, name: name))
+    }
+
+    func createSpeaker(projectId: String, name: String?) async throws -> EditResult {
+        try await edit("transcript.createSpeaker", CreateSpeakerParams(projectId: projectId, name: name))
+    }
+
+    func mergeSpeakers(projectId: String, speakerIds: [Int], into: Int) async throws -> EditResult {
+        try await edit("transcript.mergeSpeakers", MergeSpeakersParams(projectId: projectId, speakerIds: speakerIds, into: into))
+    }
+
+    func assignSpeaker(projectId: String, segmentIds: [Int], speakerId: Int) async throws -> EditResult {
+        try await edit("transcript.assignSpeaker",
+                       AssignSpeakerParams(projectId: projectId, segmentIds: segmentIds, speakerId: speakerId, newSpeakerName: nil))
+    }
+
+    func assignNewSpeaker(projectId: String, segmentIds: [Int], name: String) async throws -> EditResult {
+        try await edit("transcript.assignSpeaker",
+                       AssignSpeakerParams(projectId: projectId, segmentIds: segmentIds, speakerId: nil, newSpeakerName: name))
+    }
+
+    func splitSegment(projectId: String, segmentId: Int, wordIndex: Int) async throws -> EditResult {
+        try await edit("transcript.splitSegment", SplitSegmentParams(projectId: projectId, segmentId: segmentId, wordIndex: wordIndex))
+    }
+
+    func mergeSegments(projectId: String, segmentIds: [Int]) async throws -> EditResult {
+        try await edit("transcript.mergeSegments", MergeSegmentsParams(projectId: projectId, segmentIds: segmentIds))
+    }
+
+    func editText(projectId: String, segmentId: Int, text: String) async throws -> EditResult {
+        try await edit("transcript.editText", EditTextParams(projectId: projectId, segmentId: segmentId, text: text))
+    }
+
+    func markUncertain(projectId: String, segmentId: Int, uncertain: Bool, note: String? = nil) async throws -> EditResult {
+        try await edit("transcript.markUncertain",
+                       MarkUncertainParams(projectId: projectId, segmentId: segmentId, uncertain: uncertain, note: note))
+    }
+
+    func undo(projectId: String) async throws -> EditResult {
+        try await edit("transcript.undo", ProjectIDParams(projectId: projectId))
+    }
+
+    func redo(projectId: String) async throws -> EditResult {
+        try await edit("transcript.redo", ProjectIDParams(projectId: projectId))
+    }
+
+    private func edit<Params: Encodable & Sendable>(_ method: String, _ params: Params) async throws -> EditResult {
+        try await call(method, params: params, as: EditResult.self, timeout: .seconds(120))
     }
 
     func renderExport(projectId: String, format: String = "txt", options: ExportOptions = .init()) async throws -> ExportRendered {

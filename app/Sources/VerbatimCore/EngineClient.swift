@@ -37,6 +37,7 @@ public enum EngineNotification: Sendable {
     case projectUpdated(Project)
     case projectDeleted(String)
     case modelDownload(ModelDownload)
+    case transcriptUpdated(TranscriptUpdated)
     case other(method: String)
     /// The engine process exited; the client must be started again.
     case engineTerminated(status: Int32)
@@ -252,6 +253,8 @@ public actor EngineClient {
                 return .projectDeleted(try decoder.decode(NotificationEnvelope<ProjectDeleted>.self, from: line).params.projectId)
             case "model.download":
                 return .modelDownload(try decoder.decode(NotificationEnvelope<ModelDownload>.self, from: line).params)
+            case "transcript.updated":
+                return .transcriptUpdated(try decoder.decode(NotificationEnvelope<TranscriptUpdated>.self, from: line).params)
             default:
                 return .other(method: method)
             }
