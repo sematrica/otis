@@ -2,13 +2,17 @@
 # Run the packaged app's built-in self-test: import MEDIA, transcribe it with
 # the real model in MODEL_DIR through the app's own model layer, open the
 # transcript workspace, snapshot the window, and quit.
-#   scripts/app_self_test.sh build/Verbatim.app MEDIA MODEL_DIR BACKEND EXPECTED_PHRASE
+#   scripts/app_self_test.sh build/Verbatim.app MEDIA MODEL_DIR BACKEND EXPECTED_PHRASE [SPEAKERS]
+# With SPEAKERS=N the speaker identification and alignment models must be
+# installed in the app's models folder; N speakers are expected, a speaker is
+# renamed and the rename undone.
 set -euo pipefail
-APP="$1"; MEDIA="$2"; MODEL_DIR="$3"; BACKEND="$4"; EXPECTED="$5"
+APP="$1"; MEDIA="$2"; MODEL_DIR="$3"; BACKEND="$4"; EXPECTED="$5"; SPEAKERS="${6:-0}"
 OUT="$(mktemp -d)"
 echo "==> Self-test ($BACKEND) on $(basename "$MEDIA")"
 VERBATIM_SELF_TEST_MEDIA="$MEDIA" VERBATIM_SELF_TEST_MODEL_DIR="$MODEL_DIR" \
 VERBATIM_SELF_TEST_BACKEND="$BACKEND" VERBATIM_SELF_TEST_OUTPUT="$OUT" \
+VERBATIM_SELF_TEST_SPEAKERS="$([[ "$SPEAKERS" != 0 ]] && echo 1 || echo 0)" \
     "$APP/Contents/MacOS/Verbatim" > "$OUT/app.log" 2>&1 &
 app_pid=$!
 for _ in $(seq 1 360); do
@@ -56,13 +60,22 @@ PY
     exit 1
 fi
 cat "$OUT/result.json"
-python3 - "$OUT/result.json" "$EXPECTED" <<'PY'
+python3 - "$OUT/result.json" "$EXPECTED" "$SPEAKERS" <<'PY'
 import json, sys
 result = json.load(open(sys.argv[1]))
+speakers = int(sys.argv[3])
 assert result["status"] == "completed", result
 assert sys.argv[2].lower() in result["text"].lower(), result["text"]
-assert all(s.endswith(":completed") for s in result["stages"]), result["stages"]
-print("self-test passed:", result["segments"], "segment(s), language", result["language"])
+optional = set() if speakers else {"diarize", "align"}  # skipped when their models are not installed
+for entry in result["stages"]:
+    stage, status = entry.split(":")
+    assert status == "completed" or (stage in optional and status == "skipped"), result["stages"]
+if speakers:
+    assert len(result["speakers"]) == speakers, result["speakers"]
+    assert result["aligned_words"] >= 0.7 * result["words"], result
+    assert result["renamed"] == "Diane" and result["after_undo"] == "Speaker 1" and result["can_redo"], result
+print("self-test passed:", result["segments"], "segment(s), language", result["language"],
+      "speakers", result.get("speakers"), "aligned words", result.get("aligned_words"), "/", result.get("words"))
 PY
 if pgrep -f "$APP/Contents/Resources/python/bin/python3 -I -m verbatim_engine" >/dev/null; then
     echo "error: engine still running after the app quit" >&2; exit 1

@@ -65,6 +65,8 @@ final class AppModel: ObservableObject {
     @Published var openProjectRequest: String?
     /// Bumped whenever a project's transcript may have changed.
     @Published private(set) var transcriptRevision: [String: Int] = [:]
+    /// Latest transcript revision announced by the engine (after corrections).
+    @Published private(set) var knownTranscriptRevision: [String: Int] = [:]
 
     let client = EngineClient()
     private var notificationTask: Task<Void, Never>?
@@ -125,6 +127,7 @@ final class AppModel: ObservableObject {
             let previous = jobs[job.id]
             jobs[job.id] = job
             if job.status == .completed, previous?.status != .completed {
+                knownTranscriptRevision[job.projectId] = nil  // a new transcript: always reload
                 transcriptRevision[job.projectId, default: 0] += 1
             }
         case .projectUpdated(let project):
@@ -132,6 +135,9 @@ final class AppModel: ObservableObject {
         case .projectDeleted(let id):
             projects.removeAll { $0.id == id }
             jobs = jobs.filter { $0.value.projectId != id }
+        case .transcriptUpdated(let update):
+            knownTranscriptRevision[update.projectId] = update.revision
+            transcriptRevision[update.projectId, default: 0] += 1
         case .modelDownload(let state):
             downloads[state.modelId] = state
             if state.isFinished {
@@ -203,6 +209,12 @@ final class AppModel: ObservableObject {
     }
 
     func project(_ id: String) -> Project? { projects.first { $0.id == id } }
+
+    func modelEntry(_ id: String) -> ModelEntry? { models?.models.first { $0.id == id } }
+
+    func installedModels(kind: String) -> [ModelEntry] {
+        models?.models.filter { $0.modelKind == kind && $0.status.installed } ?? []
+    }
 
     // MARK: Import & jobs
 

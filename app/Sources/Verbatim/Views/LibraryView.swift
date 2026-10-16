@@ -43,12 +43,14 @@ struct ImportPanel: View {
     @State private var mode = "balanced"
     @State private var backend = "auto"
     @State private var language = ""
+    @State private var speakers = SpeakerChoice()
     @State private var preflight: Result<Preflight, EngineClientError>?
     @State private var pendingDownload: ModelEntry?
     @State private var isStarting = false
 
     private var options: JobOptions {
-        JobOptions(mode: mode, backend: backend, language: language.isEmpty ? nil : language)
+        JobOptions(mode: mode, backend: backend, language: language.isEmpty ? nil : language,
+                   diarize: speakers.tristate, speakers: speakers.bounds)
     }
 
     private var validFiles: [StagedFile] { staged.filter { $0.error == nil && $0.media != nil } }
@@ -62,6 +64,7 @@ struct ImportPanel: View {
                 Spacer(minLength: 0)
                 advanced
             }
+            SpeakerOptionsView(choice: $speakers)
             HStack {
                 preflightStatus
                 Spacer()
@@ -79,7 +82,7 @@ struct ImportPanel: View {
         .task(id: options) { await runPreflight() }
         .onChange(of: model.models) { _ in Task { await runPreflight() } }
         .confirmationDialog(
-            pendingDownload.map { "Download \($0.displayName) for \($0.backend == "mlx" ? "MLX" : "faster-whisper")?" } ?? "",
+            pendingDownload.map { downloadTitle($0) } ?? "",
             isPresented: Binding(get: { pendingDownload != nil }, set: { if !$0 { pendingDownload = nil } }),
             titleVisibility: .visible,
             presenting: pendingDownload
@@ -87,8 +90,7 @@ struct ImportPanel: View {
             Button("Download \(ByteSize.string(entry.approxDownloadBytes))") { Task { await model.download(entry) } }
             Button("Cancel", role: .cancel) {}
         } message: { entry in
-            Text("About \(ByteSize.string(entry.approxDownloadBytes)) will be downloaded from \(entry.sourceDescription) "
-                 + "into \(model.models?.modelsDir ?? "the models folder"). Nothing is downloaded without your confirmation.")
+            Text(downloadMessage(entry, modelsDir: model.models?.modelsDir))
         }
     }
 
@@ -195,6 +197,10 @@ struct ImportPanel: View {
                 ForEach(result.resolved.warnings.filter { !$0.contains("not implemented yet") }, id: \.self) { warning in
                     Text(warning).font(.caption).foregroundStyle(.secondary)
                 }
+                if let diarization = result.resolved.diarization, diarization.enabled {
+                    Label("Speakers identified on this Mac", systemImage: "person.2").font(.caption).foregroundStyle(.secondary)
+                }
+                alignmentStatus(result.resolved.alignment)
             }
         case .some(.failure(let error)):
             HStack(spacing: 8) {
@@ -210,6 +216,34 @@ struct ImportPanel: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private func alignmentStatus(_ alignment: Preflight.Alignment?) -> some View {
+        if let alignment {
+            if alignment.enabled {
+                Label("Word times aligned to the audio", systemImage: "waveform.badge.magnifyingglass")
+                    .font(.caption).foregroundStyle(.secondary)
+            } else if model.modes.first(where: { $0.id == mode })?.align ?? false {
+                HStack(spacing: 6) {
+                    Label("Word times from Whisper: no word-alignment model is installed", systemImage: "info.circle")
+                        .font(.caption).foregroundStyle(.secondary)
+                    if let entry = suggestedAligner {
+                        if let state = model.downloads[entry.id], !state.isFinished {
+                            DownloadProgress(state: state)
+                        } else {
+                            Button("Download…") { pendingDownload = entry }.controlSize(.small)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// The alignment model that fits the chosen language.
+    private var suggestedAligner: ModelEntry? {
+        let id = (language.isEmpty || language == "en") ? "alignment/en-conformer-medium" : "alignment/mms-300m"
+        return model.modelEntry(id)
     }
 
     private var preflightOK: Bool {
@@ -258,6 +292,22 @@ struct ImportPanel: View {
             model.section = .processing
         }
     }
+}
+
+/// Confirmation texts for an explicit model download.
+func downloadTitle(_ entry: ModelEntry) -> String {
+    switch entry.modelKind {
+    case "asr": return "Download \(entry.displayName) for \(entry.backend == "mlx" ? "MLX" : "faster-whisper")?"
+    default: return "Download \(entry.displayName)?"
+    }
+}
+
+func downloadMessage(_ entry: ModelEntry, modelsDir: String?) -> String {
+    var text = "About \(ByteSize.string(entry.approxDownloadBytes)) will be downloaded from \(entry.sourceDescription) "
+        + "into \(modelsDir ?? "the models folder")."
+    if let license = entry.license, !license.isEmpty { text += " Licence: \(license)." }
+    if let files = entry.files, !files.isEmpty { text += " The files are checked against published checksums." }
+    return text + " Nothing is downloaded without your confirmation."
 }
 
 struct DownloadProgress: View {

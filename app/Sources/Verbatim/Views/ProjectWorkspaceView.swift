@@ -3,26 +3,35 @@ import AppKit
 import SwiftUI
 import VerbatimCore
 
-/// Stage 1 workspace: player and timestamped transcript. Clicking a segment
-/// seeks the player to it. (Speaker panel and editing arrive in Stage 2.)
+/// The transcript workspace: speakers (left), the player (centre) and the
+/// editable transcript (right). The transcript follows playback, and
+/// clicking a segment or word seeks the player to it.
 struct ProjectWorkspaceView: View {
     let projectID: String
     @EnvironmentObject private var model: AppModel
     @StateObject private var player = PlayerController()
-    @State private var transcript: Transcript?
-    @State private var loadError: String?
+    @StateObject private var workspace: WorkspaceModel
     @State private var isRenaming = false
     @State private var newTitle = ""
     @State private var confirmDelete = false
+    @State private var transcribingAgain = false
+
+    init(projectID: String) {
+        self.projectID = projectID
+        _workspace = StateObject(wrappedValue: WorkspaceModel(projectID: projectID, app: AppEnvironment.model))
+    }
 
     var body: some View {
         if let project = model.project(projectID) {
             content(project)
                 .navigationTitle(project.title)
                 .toolbar { toolbar(project) }
-                .task(id: model.transcriptRevision[projectID, default: 0]) { await loadTranscript(project) }
+                .task(id: model.transcriptRevision[projectID, default: 0]) {
+                    await workspace.refresh(knownRevision: model.knownTranscriptRevision[projectID])
+                }
                 .onAppear { player.load(project.sourceURL) }
                 .onDisappear { player.stop() }
+                .focusedSceneValue(\.transcriptCommands, TranscriptCommands(workspace: workspace, player: player))
                 .alert("Rename Project", isPresented: $isRenaming) {
                     TextField("Title", text: $newTitle)
                     Button("Rename") { Task { await model.rename(project, to: newTitle) } }
@@ -31,7 +40,10 @@ struct ProjectWorkspaceView: View {
                 .confirmationDialog("Delete “\(project.title)”?", isPresented: $confirmDelete) {
                     Button("Delete Project", role: .destructive) { Task { await model.delete(project) } }
                 } message: {
-                    Text("The transcript and the engine's working files are deleted. The source media file is not touched.")
+                    Text("The transcript, your corrections and the engine's working files are deleted. The source media file is not touched.")
+                }
+                .sheet(isPresented: $transcribingAgain) {
+                    TranscribeAgainSheet(project: project, hasCorrections: workspace.history.editCount > 0)
                 }
         } else {
             EmptyState(title: "Project not found", systemImage: "questionmark.folder", message: nil)
@@ -46,30 +58,13 @@ struct ProjectWorkspaceView: View {
                 Divider()
             }
             HSplitView {
-                playerPanel(project)
-                    .frame(minWidth: 320, idealWidth: 480)
-                TranscriptPanel(transcript: transcript, loadError: loadError, project: project) { seconds in
-                    player.play(from: seconds)
-                }
-                .frame(minWidth: 380, idealWidth: 520)
+                SpeakersPanel(workspace: workspace, player: player)
+                    .frame(minWidth: 190, idealWidth: 230, maxWidth: 340)
+                PlayerPanel(project: project, workspace: workspace, player: player)
+                    .frame(minWidth: 300, idealWidth: 440)
+                TranscriptPanel(project: project, workspace: workspace, player: player)
+                    .frame(minWidth: 380, idealWidth: 540)
             }
-        }
-    }
-
-    @ViewBuilder
-    private func playerPanel(_ project: Project) -> some View {
-        VStack(spacing: 0) {
-            if let avPlayer = player.player {
-                PlayerView(player: avPlayer)
-                    .frame(minHeight: project.hasVideo ? 240 : 80)
-            } else {
-                EmptyState(title: "Playback unavailable", systemImage: "play.slash", message: player.loadError)
-            }
-            if !project.hasVideo, player.player != nil {
-                Text("Audio only").font(.caption).foregroundStyle(.secondary).padding(6)
-            }
-            MediaFacts(project: project)
-                .padding(12)
         }
     }
 
@@ -82,19 +77,15 @@ struct ProjectWorkspaceView: View {
                 Label("Export TXT", systemImage: "square.and.arrow.up")
             }
             .disabled(project.segmentCount == 0)
-            .help("Export the transcript as plain text")
+            .help("Export the transcript (with speaker names) as plain text")
 
-            Menu {
-                ForEach(model.modes) { mode in
-                    Button(mode.label) {
-                        Task { await model.retranscribe(project, options: JobOptions(mode: mode.id)) }
-                    }
-                }
+            Button {
+                transcribingAgain = true
             } label: {
                 Label("Transcribe Again", systemImage: "arrow.clockwise")
             }
             .disabled(model.latestJob(for: project.id)?.status.isActive == true)
-            .help("Run a new transcription (replaces the current transcript when it completes)")
+            .help("Run a new transcription (replaces the current transcript and corrections when it completes)")
 
             Menu {
                 Button("Rename…") { newTitle = project.title; isRenaming = true }
@@ -108,18 +99,97 @@ struct ProjectWorkspaceView: View {
             }
         }
     }
+}
 
-    private func loadTranscript(_ project: Project) async {
-        do {
-            transcript = try await model.transcript(for: project)
-            loadError = nil
-        } catch {
-            loadError = error.localizedDescription
+/// Centre panel: playback and what is being said now.
+private struct PlayerPanel: View {
+    let project: Project
+    @ObservedObject var workspace: WorkspaceModel
+    @ObservedObject var player: PlayerController
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if let avPlayer = player.player {
+                PlayerView(player: avPlayer)
+                    .frame(minHeight: project.hasVideo ? 240 : 80)
+            } else {
+                EmptyState(title: "Playback unavailable", systemImage: "play.slash", message: player.loadError)
+            }
+            if !project.hasVideo, player.player != nil {
+                Text("Audio only").font(.caption).foregroundStyle(.secondary).padding(6)
+            }
+            nowSpeaking
+                .padding(.horizontal, 12)
+                .padding(.top, 10)
+            MediaFacts(project: project)
+                .padding(12)
+        }
+    }
+
+    @ViewBuilder
+    private var nowSpeaking: some View {
+        if let id = workspace.activeSegmentID(at: player.currentTime), let segment = workspace.segment(id) {
+            let speaker = workspace.speaker(segment.speakerId)
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                SpeakerDot(speaker: speaker, size: 10)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(speaker?.displayName ?? "Unknown speaker").font(.callout.weight(.semibold))
+                    Text(segment.text.trimmingCharacters(in: .whitespaces))
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(3)
+                }
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }
 
-private struct JobBanner: View {
+/// Re-run transcription with chosen options; warns that corrections will be replaced.
+private struct TranscribeAgainSheet: View {
+    let project: Project
+    let hasCorrections: Bool
+    @EnvironmentObject private var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var mode = "balanced"
+    @State private var speakers = SpeakerChoice()
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Transcribe “\(project.title)” Again").font(.headline)
+            Picker("Mode", selection: $mode) {
+                ForEach(model.modes) { mode in Text(mode.label).tag(mode.id) }
+            }
+            .pickerStyle(.segmented)
+            if let selected = model.modes.first(where: { $0.id == mode }) {
+                Text(selected.description).font(.caption).foregroundStyle(.secondary)
+            }
+            SpeakerOptionsView(choice: $speakers)
+            if hasCorrections {
+                Label("Your corrections to the current transcript are replaced when the new transcription completes.",
+                      systemImage: "exclamationmark.triangle")
+                    .font(.callout)
+                    .foregroundStyle(.orange)
+            }
+            HStack {
+                Spacer()
+                Button("Cancel", role: .cancel) { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button("Transcribe") {
+                    let options = JobOptions(mode: mode, diarize: speakers.tristate, speakers: speakers.bounds)
+                    Task { await model.retranscribe(project, options: options) }
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(18)
+        .frame(width: 520)
+    }
+}
+
+struct JobBanner: View {
     let job: Job
     @EnvironmentObject private var model: AppModel
 
@@ -146,7 +216,7 @@ private struct JobBanner: View {
     private var title: String {
         switch job.status {
         case .queued: return "Queued"
-        case .running: return "Transcribing"
+        case .running: return job.runningStage?.label ?? "Transcribing"
         case .failed: return "Transcription failed"
         case .cancelled: return "Transcription cancelled"
         case .interrupted: return "Transcription interrupted"
@@ -190,151 +260,53 @@ private struct MediaFacts: View {
     }
 }
 
-struct TranscriptPanel: View {
-    let transcript: Transcript?
-    let loadError: String?
-    let project: Project
-    let onSeek: (Double) -> Void
+// MARK: - Menu commands
 
-    var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider()
-            if let loadError {
-                EmptyState(title: "Could not load the transcript", systemImage: "exclamationmark.triangle", message: loadError)
-            } else if let transcript, !transcript.segments.isEmpty {
-                List(transcript.segments) { segment in
-                    SegmentRow(segment: segment) { onSeek(segment.start) }
-                }
-                .listStyle(.inset)
-            } else if transcript != nil {
-                EmptyState(title: "No transcript yet", systemImage: "text.bubble",
-                           message: project.status == .ready
-                               ? "No speech was detected in this recording."
-                               : "The transcript appears here when processing completes.")
-            } else {
-                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-        }
-    }
+/// What the Edit and Playback menus act on while a workspace is frontmost.
+struct TranscriptCommands {
+    let workspace: WorkspaceModel
+    let player: PlayerController
+}
 
-    private var header: some View {
-        HStack(spacing: 10) {
-            Text("Transcript").font(.headline)
-            if let language = transcript?.language {
-                Text(language.uppercased()).font(.caption.weight(.semibold))
-                    .padding(.horizontal, 6).padding(.vertical, 1)
-                    .background(Color.secondary.opacity(0.15), in: Capsule())
-            }
-            Spacer()
-            if let effective = transcript?.effective {
-                EffectiveSummary(effective: effective)
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+struct TranscriptCommandsKey: FocusedValueKey {
+    typealias Value = TranscriptCommands
+}
+
+extension FocusedValues {
+    var transcriptCommands: TranscriptCommands? {
+        get { self[TranscriptCommandsKey.self] }
+        set { self[TranscriptCommandsKey.self] = newValue }
     }
 }
 
-/// Which model and backend actually produced the transcript.
-private struct EffectiveSummary: View {
-    let effective: JSONValue
-    @EnvironmentObject private var model: AppModel
-    @State private var showDetails = false
+/// Undo/Redo for transcript corrections. While text is being typed (a text
+/// field or editor has focus) the commands go to that text instead.
+@MainActor
+struct TranscriptMenuCommands: Commands {
+    @FocusedValue(\.transcriptCommands) private var commands
 
-    var body: some View {
-        Button {
-            showDetails.toggle()
-        } label: {
-            Text(summary).font(.caption).foregroundStyle(.secondary)
+    var body: some Commands {
+        CommandGroup(replacing: .undoRedo) {
+            Button("Undo") { perform(undo: true) }
+                .keyboardShortcut("z", modifiers: .command)
+            Button("Redo") { perform(undo: false) }
+                .keyboardShortcut("z", modifiers: [.command, .shift])
         }
-        .buttonStyle(.plain)
-        .help("Settings that produced this transcript")
-        .popover(isPresented: $showDetails) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 4) {
-                    ForEach(rows) { row in
-                        HStack(alignment: .top) {
-                            Text(row.key.humanizedKey).foregroundStyle(.secondary).frame(width: 170, alignment: .leading)
-                            Text(row.value).textSelection(.enabled)
-                        }
-                        .font(.caption)
-                    }
-                }
-                .padding(14)
-            }
-            .frame(width: 460, height: 340)
+        CommandMenu("Playback") {
+            Button("Play / Pause") { commands?.player.togglePlayback() }
+                .keyboardShortcut(.space, modifiers: .option)
+                .disabled(commands == nil)
         }
     }
 
-    private var summary: String {
-        let modelName = effective.lookup("model")?.lookup("display_name")?.stringValue ?? "Unknown model"
-        let backendID = effective.lookup("backend")?.stringValue ?? ""
-        let backend = model.engineInfo?.backends.first { $0.name == backendID }?.displayName ?? backendID
-        return backend.isEmpty ? modelName : "\(modelName) · \(backend)"
-    }
-
-    private struct Row: Identifiable {
-        let key: String
-        let value: String
-        var id: String { key }
-    }
-
-    private var rows: [Row] {
-        var out: [Row] = []
-        func walk(_ value: JSONValue, prefix: String) {
-            if case .object(let object) = value {
-                for key in object.keys.sorted() {
-                    walk(object[key]!, prefix: prefix.isEmpty ? key : "\(prefix) › \(key)")
-                }
-            } else {
-                out.append(Row(key: prefix, value: value.displayString))
-            }
+    private func perform(undo: Bool) {
+        if let text = NSApp.keyWindow?.firstResponder as? NSText {
+            if undo { text.undoManager?.undo() } else { text.undoManager?.redo() }
+            return
         }
-        walk(effective, prefix: "")
-        return out
-    }
-}
-
-private struct SegmentRow: View {
-    let segment: Segment
-    let onSeek: () -> Void
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Button(action: onSeek) {
-                Text(Timecode.clock(segment.start))
-                    .font(.callout.monospacedDigit())
-                    .foregroundStyle(Color.accentColor)
-            }
-            .buttonStyle(.plain)
-            .help("Play from here")
-            Text(segment.text)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            if let note = boundaryNote {
-                Image(systemName: "scissors")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .help(note)
-            }
+        guard let workspace = commands?.workspace else { return }
+        Task {
+            if undo { await workspace.undo() } else { await workspace.redo() }
         }
-        .padding(.vertical, 3)
-        .contentShape(Rectangle())
-        .onTapGesture(count: 2, perform: onSeek)
-    }
-
-    /// Automatic decisions made while joining chunks, shown for transparency.
-    private var boundaryNote: String? {
-        let types = Set(segment.flagTypes)
-        if types.contains("boundary_duplicate_removed") {
-            let removed = segment.flags.first { $0["type"]?.stringValue == "boundary_duplicate_removed" }
-            let text = removed?["text"]?.stringValue ?? ""
-            return "A repeated passage at a chunk boundary was removed: “\(text)”."
-        }
-        if types.contains("trimmed_at_chunk_boundary") {
-            return "This segment was joined at a processing-chunk boundary."
-        }
-        return nil
     }
 }

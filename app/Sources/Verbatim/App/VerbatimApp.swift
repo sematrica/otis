@@ -20,6 +20,7 @@ struct VerbatimApp: App {
         }
         .commands {
             CommandGroup(replacing: .newItem) {}
+            TranscriptMenuCommands()
         }
 
         Settings {

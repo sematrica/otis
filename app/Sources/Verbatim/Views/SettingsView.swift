@@ -29,13 +29,16 @@ private struct ModelsSettings: View {
                 List {
                     ForEach(["mlx", "faster-whisper"], id: \.self) { backend in
                         Section(header: sectionHeader(backend, listing: listing)) {
-                            ForEach(listing.models.filter { $0.backend == backend }) { entry in
-                                ModelRow(entry: entry, download: model.downloads[entry.id],
-                                         onDownload: { pendingDownload = entry },
-                                         onCancel: { Task { await model.cancelDownload(entry) } },
-                                         onDelete: { pendingDelete = entry })
+                            ForEach(listing.models.filter { $0.modelKind == "asr" && $0.backend == backend }) { entry in
+                                row(entry)
                             }
                         }
+                    }
+                    Section(header: Text("Speaker identification")) {
+                        ForEach(listing.models.filter { $0.modelKind == "diarization" }) { entry in row(entry) }
+                    }
+                    Section(header: Text("Word alignment — precise word times")) {
+                        ForEach(listing.models.filter { $0.modelKind == "alignment" }) { entry in row(entry) }
                     }
                 }
                 .listStyle(.inset(alternatesRowBackgrounds: true))
@@ -49,18 +52,17 @@ private struct ModelsSettings: View {
         }
         .task { await model.refreshModels() }
         .confirmationDialog(
-            pendingDownload.map { "Download \($0.displayName)?" } ?? "",
+            pendingDownload.map { downloadTitle($0) } ?? "",
             isPresented: Binding(get: { pendingDownload != nil }, set: { if !$0 { pendingDownload = nil } }),
             presenting: pendingDownload
         ) { entry in
             Button("Download \(ByteSize.string(entry.approxDownloadBytes))") { Task { await model.download(entry) } }
             Button("Cancel", role: .cancel) {}
         } message: { entry in
-            Text("About \(ByteSize.string(entry.approxDownloadBytes)) from \(entry.sourceDescription) "
-                 + "will be stored in \(model.models?.modelsDir ?? "the models folder").")
+            Text(downloadMessage(entry, modelsDir: model.models?.modelsDir))
         }
         .confirmationDialog(
-            pendingDelete.map { "Delete \($0.displayName) (\($0.backend))?" } ?? "",
+            pendingDelete.map { "Delete \($0.displayName)\($0.modelKind == "asr" ? " (\($0.backend))" : "")?" } ?? "",
             isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
             presenting: pendingDelete
         ) { entry in
@@ -69,6 +71,13 @@ private struct ModelsSettings: View {
         } message: { entry in
             Text("Frees \(ByteSize.string(entry.status.sizeOnDisk)). You can download it again later.")
         }
+    }
+
+    private func row(_ entry: ModelEntry) -> some View {
+        ModelRow(entry: entry, download: model.downloads[entry.id],
+                 onDownload: { pendingDownload = entry },
+                 onCancel: { Task { await model.cancelDownload(entry) } },
+                 onDelete: { pendingDelete = entry })
     }
 
     private var folderRow: some View {
@@ -127,6 +136,9 @@ private struct ModelRow: View {
                 Text(details).font(.caption).foregroundStyle(.secondary)
                 if !entry.notes.isEmpty {
                     Text(entry.notes).font(.caption).foregroundStyle(.secondary)
+                }
+                if let license = entry.license, !license.isEmpty {
+                    Text("Licence: \(license)").font(.caption).foregroundStyle(.secondary)
                 }
             }
             Spacer()

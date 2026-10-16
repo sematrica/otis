@@ -151,6 +151,14 @@ jobs:
         run: >-
           scripts/app_self_test.sh build/Verbatim.app "$RUNNER_TEMP/jfk-video.mp4"
           "$RUNNER_TEMP/vdata/models/mlx/small" mlx "fellow Americans"
+      - name: App self-test with speakers and word alignment (two-person call, rename, undo)
+        run: |
+          models="$HOME/Library/Application Support/Verbatim/models"
+          mkdir -p "$models/diarization" "$models/alignment"
+          ln -sfn "$RUNNER_TEMP/vdata/models/diarization/pyannote-wespeaker" "$models/diarization/pyannote-wespeaker"
+          ln -sfn "$RUNNER_TEMP/vdata/models/alignment/en-conformer-small" "$models/alignment/en-conformer-small"
+          scripts/app_self_test.sh build/Verbatim.app "$RUNNER_TEMP/speaker-corpus/sample.wav" \
+            "$RUNNER_TEMP/vdata/models/faster-whisper/small" faster-whisper "New Jersey" 2
       - name: Package artifact
         run: ditto -c -k --keepParent build/Verbatim.app build/Verbatim.zip
       - uses: actions/upload-artifact@v4

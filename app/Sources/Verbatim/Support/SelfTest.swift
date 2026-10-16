@@ -9,6 +9,9 @@ import VerbatimCore
 ///     VERBATIM_SELF_TEST_MODEL_DIR   real model folder
 ///     VERBATIM_SELF_TEST_BACKEND     faster-whisper (default) or mlx
 ///     VERBATIM_SELF_TEST_OUTPUT      folder for result.json and window.png
+///     VERBATIM_SELF_TEST_SPEAKERS    "1": require speaker identification and
+///                                    word alignment, then rename a speaker
+///                                    and undo it through the engine
 ///
 /// It goes through the same AppModel the UI uses (engine start, validation,
 /// import, job notifications, transcript loading), opens the transcript
@@ -19,6 +22,7 @@ struct SelfTest {
     let modelDirectory: String
     let backend: String
     let output: URL
+    let speakers: Bool
 
     struct Failure: Error, CustomStringConvertible {
         let description: String
@@ -33,7 +37,8 @@ struct SelfTest {
             media: URL(fileURLWithPath: media),
             modelDirectory: modelDirectory,
             backend: env["VERBATIM_SELF_TEST_BACKEND"] ?? "faster-whisper",
-            output: URL(fileURLWithPath: output, isDirectory: true)
+            output: URL(fileURLWithPath: output, isDirectory: true),
+            speakers: env["VERBATIM_SELF_TEST_SPEAKERS"] == "1"
         )
     }
 
@@ -62,7 +67,8 @@ struct SelfTest {
             let staged = await model.stage([media])
             step("staged: \(staged.first?.error ?? "ok")")
             if let error = staged.first?.error { throw Failure(description: "validation failed: \(error)") }
-            let options = JobOptions(mode: "balanced", backend: backend, modelPath: modelDirectory)
+            let options = JobOptions(mode: "balanced", backend: backend, modelPath: modelDirectory,
+                                     diarize: speakers ? .on : .auto, align: speakers ? .on : .auto)
             guard await model.transcribe(staged, options: options) else {
                 throw Failure(description: model.alert?.message ?? "could not start the job")
             }
@@ -89,6 +95,17 @@ struct SelfTest {
             result["segments"] = transcript.segments.count
             result["text"] = transcript.segments.map(\.text).joined(separator: " ")
             result["stages"] = job.stages.map { "\($0.stage):\($0.status.rawValue)" }
+            result["speakers"] = transcript.speakers.map(\.label)
+            let words = transcript.segments.flatMap { $0.words ?? [] }
+            result["words"] = words.count
+            result["aligned_words"] = words.filter { $0.timingSource == "alignment" }.count
+
+            if speakers, let first = transcript.speakers.first {
+                // A correction through the same client the workspace uses.
+                let renamed = try await model.client.renameSpeaker(projectId: project.id, speakerId: first.id, name: "Diane")
+                result["renamed"] = renamed.transcript.speaker(first.id).map { $0.displayName as Any } ?? NSNull()
+                step("renamed \(first.label)")
+            }
 
             // Show the transcript workspace and snapshot the window.
             model.section = .library
@@ -97,6 +114,13 @@ struct SelfTest {
             step("workspace opened; taking snapshot")
             result["snapshot"] = snapshotWindow(to: output.appendingPathComponent("window.png"))
             step("snapshot done")
+
+            if speakers, let first = transcript.speakers.first {
+                let undone = try await model.client.undo(projectId: project.id)
+                result["after_undo"] = undone.transcript.speaker(first.id).map { $0.displayName as Any } ?? NSNull()
+                result["can_redo"] = undone.transcript.history.canRedo
+                step("undo done")
+            }
         } catch {
             result["status"] = "failed"
             result["error"] = String(describing: error)
