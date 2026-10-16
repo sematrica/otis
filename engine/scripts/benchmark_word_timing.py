@@ -144,7 +144,8 @@ def main() -> int:
                         words.extend(_W(t.start, t.end, w.text) for t, w in zip(res.words, seg.words))
                     else:
                         words.extend(seg.words)
-                result[spec.split(":")[0]] = {**metrics(match(reference, words)), "segments": statuses}
+                kind, _, path = spec.partition(":")
+                result[f"{kind}:{Path(path).name}"] = {**metrics(match(reference, words)), "segments": statuses}
             report["voices"][voice] = result
             print(json.dumps({voice: result}, indent=2))
     if args.json:

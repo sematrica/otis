@@ -246,9 +246,19 @@ def test_alignment_rejects_text_that_was_not_spoken(english_aligner, timed_speec
     assert all(r.status == "failed" for r in results), [(r.status, r.score) for r in results]
 
 
-def test_alignment_on_real_telephone_speech(english_aligner, speaker_corpus, tmp_path):
+@pytest.fixture(params=["english", "mms"])
+def any_aligner(request):
+    """Each installed alignment model (skips the ones not available)."""
+    if request.param == "english":
+        return "english", request.getfixturevalue("english_aligner")
+    folder = request.getfixturevalue("mms_dir")
+    return "mms", WordAligner(MMSModel(folder, model_id="mms", display_name="MMS", threads=os.cpu_count() or 4))
+
+
+def test_alignment_on_real_telephone_speech(any_aligner, speaker_corpus, tmp_path):
     """No reference word times exist for this recording; the reference
     transcript is aligned and the result must stay inside the annotated turns."""
+    name, english_aligner = any_aligner
     wav = _wav(speaker_corpus / "sample.wav", tmp_path)
     turns = _references(speaker_corpus)["sample"]
     text = [("speaker90", "Hello."), ("speaker91", "Hello."), ("speaker90", "Oh, hello. I didn't know you were there."),
@@ -262,7 +272,7 @@ def test_alignment_on_real_telephone_speech(english_aligner, speaker_corpus, tmp
     with WavReader(wav) as reader:
         results = english_aligner.align(reader, segments, "en")
     statuses = [r.status for r in results]
-    REPORT["alignment_real_sample"] = {"statuses": statuses, "scores": [r.score for r in results]}
+    REPORT[f"alignment_real_sample_{name}"] = {"statuses": statuses, "scores": [r.score for r in results]}
     assert statuses.count("aligned") >= 3
     for seg, res, (start, end, _) in zip(segments, results, turns[:4]):
         if res.status == "aligned":

@@ -242,7 +242,7 @@ struct ImportPanel: View {
 
     /// The alignment model that fits the chosen language.
     private var suggestedAligner: ModelEntry? {
-        let id = (language.isEmpty || language == "en") ? "alignment/en-conformer-medium" : "alignment/mms-300m"
+        let id = (language.isEmpty || language == "en") ? "alignment/en-conformer-small" : "alignment/mms-300m"
         return model.modelEntry(id)
     }
 

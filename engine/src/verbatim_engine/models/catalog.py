@@ -198,10 +198,10 @@ def _nemo(size: str, display: str, params: str, archive_bytes: int, archive_sha:
 ALIGNMENT_MODELS: tuple[ModelSpec, ...] = (
     _nemo("small", "English word alignment (Conformer-CTC Small)", "13M", 76_482_338,
           "83dcb462aece5bef4e8072c267419389f0b8d1f91152d8851765f284ff664caa", int(0.5 * GB),
-          "Smallest download. English only."),
+          "English only. Measured word-start error on synthetic speech: about 35 ms (Whisper alone: about 90 ms)."),
     _nemo("medium", "English word alignment (Conformer-CTC Medium)", "30M", 165_685_608,
           "08cb7b6ebc516a2577c5b152230730ebf5f937507260305ea592c7accd7f899b", int(0.8 * GB),
-          "More robust than Small on difficult audio. English only."),
+          "English only. Larger, but less precise than Small in our measurements (about 45 ms word-start error)."),
     ModelSpec(
         id="alignment/mms-300m",
         backend="onnx",
@@ -217,8 +217,8 @@ ALIGNMENT_MODELS: tuple[ModelSpec, ...] = (
         required_files=("*.onnx",),
         license="CC BY-NC 4.0 (Meta MMS) - non-commercial use only",
         homepage="https://huggingface.co/deskpai/ctc_forced_aligner",
-        notes="Over 1,100 languages (non-Latin scripts are romanised). Its licence does not allow "
-        "commercial use.",
+        notes="Over 1,100 languages (non-Latin scripts are romanised); the most precise aligner we measured "
+        "(about 20 ms word-start error in English, German and Spanish). Its licence does not allow commercial use.",
     ),
 )
 

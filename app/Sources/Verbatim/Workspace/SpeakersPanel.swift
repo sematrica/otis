@@ -29,7 +29,7 @@ struct SpeakersPanel: View {
             if workspace.speakers.isEmpty {
                 noSpeakers
             } else {
-                List(selection: Binding(get: { workspace.focusedSpeakerID }, set: select)) {
+                List(selection: Binding(get: { workspace.focusedSpeakerID }, set: { newValue in select(newValue) })) {
                     ForEach(workspace.speakers) { speaker in
                         SpeakerRow(speaker: speaker, isSpeaking: isSpeaking(speaker))
                             .tag(speaker.id)

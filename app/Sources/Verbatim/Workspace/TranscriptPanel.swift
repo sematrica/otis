@@ -301,12 +301,12 @@ struct NameSheet: View {
             TextField("", text: $value)
                 .textFieldStyle(.roundedBorder)
                 .frame(minWidth: 320)
-                .onSubmit(done)
+                .onSubmit { done() }
             HStack {
                 Spacer()
                 Button("Cancel", role: .cancel) { dismiss() }
                     .keyboardShortcut(.cancelAction)
-                Button(action, action: done)
+                Button(action) { done() }
                     .keyboardShortcut(.defaultAction)
             }
         }

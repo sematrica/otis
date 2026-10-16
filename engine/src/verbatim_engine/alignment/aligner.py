@@ -211,7 +211,8 @@ class WordAligner:
 
         keys = [(i, j) for i in group for j in range(len(segments[i].words or []))]
         spans = [boundaries.Span(start + first[k] * fs, start + (last[k] + 1) * fs) for k in keys]
-        refined = dict(zip(keys, boundaries.refine(spans, audio, start)))
+        split = getattr(self.model, "connected_split", boundaries.CONNECTED_SPLIT)
+        refined = dict(zip(keys, boundaries.refine(spans, audio, start, split)))
         out = {}
         for i in group:
             words = segments[i].words or []

@@ -29,7 +29,8 @@ from ..audio import SAMPLE_RATE
 HOP_SECONDS = 0.01
 MIN_PAUSE_SECONDS = 0.06
 #: Fraction of an inter-word gap (between spikes) that belongs to the first
-#: word, for connected speech. Fitted on synthetic speech (see module doc).
+#: word, for connected speech. Fitted on synthetic speech (see module doc);
+#: models may use their own value (``CTCModel.connected_split``).
 CONNECTED_SPLIT = 0.62
 MAX_START_EXTENSION = 0.15
 MAX_END_EXTENSION = 0.40
@@ -52,7 +53,7 @@ def _levels(audio: np.ndarray) -> np.ndarray:
     return 10 * np.log10((frames**2).mean(axis=1) + 1e-12)
 
 
-def refine(spans: list[Span], audio: np.ndarray, offset: float) -> list[Span]:
+def refine(spans: list[Span], audio: np.ndarray, offset: float, connected_split: float = CONNECTED_SPLIT) -> list[Span]:
     """Adjusted copies of ``spans`` (absolute seconds) for audio starting at ``offset``."""
     if not spans:
         return []
@@ -89,7 +90,7 @@ def refine(spans: list[Span], audio: np.ndarray, offset: float) -> list[Span]:
             a.end = max(gap0, min(gap1, time(i0 + quiet_run[0])))
             b.start = min(gap1, max(a.end, time(i0 + quiet_run[1])))
         else:
-            boundary = gap0 + CONNECTED_SPLIT * (gap1 - gap0)
+            boundary = gap0 + connected_split * (gap1 - gap0)
             a.end = b.start = boundary
 
     # first word: move the start back over sound that is already there

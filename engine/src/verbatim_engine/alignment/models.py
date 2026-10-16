@@ -51,6 +51,9 @@ class CTCModel(abc.ABC):
     frame_seconds: float
     blank: int
     vocab_size: int
+    #: Where, between two words' token spikes, connected speech is split
+    #: (see :mod:`.refine`); measured per model on speech with known word times.
+    connected_split: float = 0.62
 
     @abc.abstractmethod
     def supports(self, language: str | None) -> bool: ...
@@ -269,7 +272,10 @@ class MMSModel(CTCModel):
 def load_model(spec, path: Path, threads: int) -> CTCModel:
     """Instantiate the acoustic model for a catalog alignment entry."""
     if spec.family.startswith("en-conformer-"):
-        return NemoCTCModel(path, model_id=spec.id, display_name=spec.display_name, threads=threads)
+        model = NemoCTCModel(path, model_id=spec.id, display_name=spec.display_name, threads=threads)
+        # measured with scripts/benchmark_word_timing.py (synthetic speech)
+        model.connected_split = 0.45 if spec.family == "en-conformer-medium" else 0.62
+        return model
     if spec.family == "mms-300m":
         return MMSModel(path, model_id=spec.id, display_name=spec.display_name, threads=threads)
     raise EngineError(f"No loader for alignment model {spec.id}.", code="model_invalid")

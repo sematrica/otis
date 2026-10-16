@@ -294,8 +294,10 @@ def resolve(options: dict[str, Any], models: ModelManager) -> ResolvedJob:
     )
 
 
-#: Preference among installed alignment models (first match for the language wins).
-ALIGNMENT_PREFERENCE = ("alignment/en-conformer-medium", "alignment/en-conformer-small", "alignment/mms-300m")
+#: Preference among installed alignment models (first match for the language
+#: wins), by measured word-timing precision (docs/STAGE2_REPORT.md). MMS is
+#: only used if the user installed it after seeing its non-commercial licence.
+ALIGNMENT_PREFERENCE = ("alignment/mms-300m", "alignment/en-conformer-small", "alignment/en-conformer-medium")
 
 
 def _resolve_diarization(options: dict[str, Any], models: ModelManager) -> tuple[Path | None, str | None]:
@@ -332,7 +334,7 @@ def _resolve_alignment(options: dict[str, Any], models: ModelManager) -> tuple[l
     if order:
         return [(s, Path(models.status(s)["path"])) for s in order], None
     if setting is True:
-        suggestion = get_spec("alignment/en-conformer-medium" if language in (None, "en") else "alignment/mms-300m")
+        suggestion = get_spec("alignment/en-conformer-small" if language in (None, "en") else "alignment/mms-300m")
         raise ModelNotInstalled(
             "No word-alignment model for this language is installed. Download one in Settings → Models.",
             data={"model_id": suggestion.id, "display_name": suggestion.display_name,

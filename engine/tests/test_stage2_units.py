@@ -560,8 +560,9 @@ def test_resolve_speakers_and_alignment(data_dir):
     _install(models, catalog.get_spec("alignment/mms-300m"), {"aligner.onnx": b"x"})
     resolved = resolve({**options, "speakers": {"num": 2, "min": None, "max": None}}, models)
     assert resolved.diarization_dir is not None and resolved.speaker_bounds["num"] == 2
-    assert [s.id for s, _ in resolved.alignment_candidates] == ["alignment/en-conformer-small", "alignment/mms-300m"]
-    assert resolved.alignment_model_for("en")[0].id == "alignment/en-conformer-small"
+    # the multilingual model measured most precise; it is only present if the user installed it
+    assert [s.id for s, _ in resolved.alignment_candidates] == ["alignment/mms-300m", "alignment/en-conformer-small"]
+    assert resolved.alignment_model_for("en")[0].id == "alignment/mms-300m"
     assert resolved.alignment_model_for("de")[0].id == "alignment/mms-300m"
     german = resolve({**options, "language": "de"}, models)
     assert [s.id for s, _ in german.alignment_candidates] == ["alignment/mms-300m"]
