@@ -1,18 +1,10 @@
 {
-  "id": 31,
+  "id": 102,
   "result": {
     "effective": {
       "alignment": {
-        "aligned": 2,
-        "enabled": true,
-        "failed": 0,
-        "model": {
-          "display_name": "English word alignment (Conformer-CTC Small)",
-          "id": "alignment/en-conformer-small"
-        },
-        "segments": 2,
-        "skipped": 0,
-        "wildcard_words": 0
+        "enabled": false,
+        "reason": "No word-alignment model is installed; word times come from Whisper."
       },
       "backend": "faster-whisper",
       "chunk_seconds": 600.0,
@@ -42,27 +34,8 @@
         "word_timestamps": true
       },
       "diarization": {
-        "assigned_by_continuity": 0,
-        "bounds": {},
-        "clustering_seconds": 0.32,
-        "constrained_assignment": false,
-        "embedding_seconds": 0.145,
-        "embeddings": 2,
-        "embeddings_with_overlap": 0,
-        "enabled": true,
-        "estimated_speakers": 1,
-        "local_speakers": 2,
-        "method": "pyannote segmentation-3.0 + WeSpeaker ResNet34 + agglomerative clustering (ONNX Runtime)",
-        "overlap_seconds": 0,
-        "segmentation_seconds": 0.048,
-        "speakers_found": 1,
-        "speakers_in_transcript": 1,
-        "step_seconds": 1.0,
-        "threshold": 0.7045654963945799,
-        "total_seconds": 0.513,
-        "training_embeddings": 2,
-        "window_seconds": 10.0,
-        "windows": 2
+        "enabled": false,
+        "reason": "The speaker identification model is not installed."
       },
       "load": {
         "compute_type": "int8",
@@ -86,142 +59,142 @@
       "redo_summary": null,
       "undo_summary": null
     },
-    "job_id": "a7e23f9de3c74e4d9ff9084062ab1a24",
+    "job_id": "37646741391c4a13b202f5485fa3100e",
     "language": "en",
     "merged_speakers": [],
-    "project_id": "fc8cb360ed9742d0a418729982cd2f86",
+    "project_id": "1ddb11a11f3a4123a81428d7e444842b",
     "revision": 1,
     "segments": [
       {
         "avg_logprob": -0.1967093085249265,
         "chunk_index": 0,
         "compression_ratio": 1.3375,
-        "end": 7.53,
+        "end": 7.45,
         "flags": [],
         "id": 1,
         "language": "en",
         "no_speech_prob": 0.07812988013029099,
         "ordinal": 0,
-        "original_speaker_id": 1,
+        "original_speaker_id": null,
         "original_text": "And so my fellow Americans, ask not what your country can do for you.",
-        "speaker_confidence": 0.985,
+        "speaker_confidence": null,
         "speaker_edited": false,
-        "speaker_id": 1,
-        "start": 0.33,
+        "speaker_id": null,
+        "start": 0.0,
         "text": "And so my fellow Americans, ask not what your country can do for you.",
         "text_edited": false,
         "words": [
           {
-            "end": 0.54,
+            "end": 0.53,
             "probability": 0.7568811774253845,
-            "speaker_id": 1,
-            "start": 0.33,
+            "speaker_id": null,
+            "start": 0.0,
             "text": " And",
-            "timing_source": "alignment"
+            "timing_source": "whisper"
           },
           {
-            "end": 0.903,
+            "end": 0.8700000000000001,
             "probability": 0.9911144971847534,
-            "speaker_id": 1,
-            "start": 0.64,
+            "speaker_id": null,
+            "start": 0.53,
             "text": " so",
-            "timing_source": "alignment"
+            "timing_source": "whisper"
           },
           {
-            "end": 1.26,
+            "end": 1.19,
             "probability": 0.5787479877471924,
-            "speaker_id": 1,
-            "start": 0.903,
+            "speaker_id": null,
+            "start": 0.8700000000000001,
             "text": " my",
-            "timing_source": "alignment"
+            "timing_source": "whisper"
           },
           {
-            "end": 1.724,
+            "end": 1.5299999999999998,
             "probability": 0.9948441982269287,
-            "speaker_id": 1,
-            "start": 1.32,
+            "speaker_id": null,
+            "start": 1.19,
             "text": " fellow",
-            "timing_source": "alignment"
+            "timing_source": "whisper"
           },
           {
-            "end": 2.24,
+            "end": 2.13,
             "probability": 0.9367003440856934,
-            "speaker_id": 1,
-            "start": 1.724,
+            "speaker_id": null,
+            "start": 1.5299999999999998,
             "text": " Americans,",
-            "timing_source": "alignment"
+            "timing_source": "whisper"
           },
           {
-            "end": 3.66,
+            "end": 3.71,
             "probability": 0.9251018762588501,
-            "speaker_id": 1,
+            "speaker_id": null,
             "start": 3.29,
             "text": " ask",
-            "timing_source": "alignment"
+            "timing_source": "whisper"
           },
           {
-            "end": 4.29,
+            "end": 4.23,
             "probability": 0.7861220836639404,
-            "speaker_id": 1,
-            "start": 4.01,
+            "speaker_id": null,
+            "start": 3.71,
             "text": " not",
-            "timing_source": "alignment"
+            "timing_source": "whisper"
           },
           {
-            "end": 5.57,
+            "end": 5.53,
             "probability": 0.9265066385269165,
-            "speaker_id": 1,
-            "start": 5.36,
+            "speaker_id": null,
+            "start": 4.23,
             "text": " what",
-            "timing_source": "alignment"
+            "timing_source": "whisper"
           },
           {
-            "end": 5.85,
+            "end": 5.77,
             "probability": 0.983763575553894,
-            "speaker_id": 1,
-            "start": 5.65,
+            "speaker_id": null,
+            "start": 5.53,
             "text": " your",
-            "timing_source": "alignment"
+            "timing_source": "whisper"
           },
           {
-            "end": 6.11,
+            "end": 6.29,
             "probability": 0.9942523837089539,
-            "speaker_id": 1,
-            "start": 5.92,
+            "speaker_id": null,
+            "start": 5.77,
             "text": " country",
-            "timing_source": "alignment"
+            "timing_source": "whisper"
           },
           {
-            "end": 6.644,
+            "end": 6.61,
             "probability": 0.9979683756828308,
-            "speaker_id": 1,
-            "start": 6.21,
+            "speaker_id": null,
+            "start": 6.29,
             "text": " can",
-            "timing_source": "alignment"
+            "timing_source": "whisper"
           },
           {
-            "end": 6.93,
+            "end": 6.85,
             "probability": 0.9984435439109802,
-            "speaker_id": 1,
-            "start": 6.644,
+            "speaker_id": null,
+            "start": 6.61,
             "text": " do",
-            "timing_source": "alignment"
+            "timing_source": "whisper"
           },
           {
-            "end": 7.114,
+            "end": 7.07,
             "probability": 0.9964262843132019,
-            "speaker_id": 1,
-            "start": 7.0,
+            "speaker_id": null,
+            "start": 6.85,
             "text": " for",
-            "timing_source": "alignment"
+            "timing_source": "whisper"
           },
           {
-            "end": 7.53,
+            "end": 7.45,
             "probability": 0.9986674785614014,
-            "speaker_id": 1,
-            "start": 7.114,
+            "speaker_id": null,
+            "start": 7.07,
             "text": " you.",
-            "timing_source": "alignment"
+            "timing_source": "whisper"
           }
         ]
       },
@@ -229,101 +202,88 @@
         "avg_logprob": -0.1967093085249265,
         "chunk_index": 0,
         "compression_ratio": 1.3375,
-        "end": 10.21,
+        "end": 10.33,
         "flags": [],
         "id": 2,
         "language": "en",
         "no_speech_prob": 0.07812988013029099,
         "ordinal": 1,
-        "original_speaker_id": 1,
+        "original_speaker_id": null,
         "original_text": "Ask what you can do for your country.",
-        "speaker_confidence": 1.0,
+        "speaker_confidence": null,
         "speaker_edited": false,
-        "speaker_id": 1,
-        "start": 8.19,
+        "speaker_id": null,
+        "start": 7.789999999999999,
         "text": "Ask what you can do for your country.",
         "text_edited": false,
         "words": [
           {
-            "end": 8.49,
+            "end": 8.47,
             "probability": 0.9678094983100891,
-            "speaker_id": 1,
-            "start": 8.19,
+            "speaker_id": null,
+            "start": 7.789999999999999,
             "text": " Ask",
-            "timing_source": "alignment"
+            "timing_source": "whisper"
           },
           {
-            "end": 8.76,
+            "end": 8.77,
             "probability": 0.9942960143089294,
-            "speaker_id": 1,
-            "start": 8.6,
+            "speaker_id": null,
+            "start": 8.47,
             "text": " what",
-            "timing_source": "alignment"
+            "timing_source": "whisper"
           },
           {
-            "end": 9.109,
+            "end": 9.07,
             "probability": 0.9688539505004883,
-            "speaker_id": 1,
-            "start": 8.91,
+            "speaker_id": null,
+            "start": 8.77,
             "text": " you",
-            "timing_source": "alignment"
+            "timing_source": "whisper"
           },
           {
-            "end": 9.364,
+            "end": 9.35,
             "probability": 0.9972602128982544,
-            "speaker_id": 1,
-            "start": 9.109,
+            "speaker_id": null,
+            "start": 9.07,
             "text": " can",
-            "timing_source": "alignment"
+            "timing_source": "whisper"
           },
           {
-            "end": 9.604,
+            "end": 9.57,
             "probability": 0.998633086681366,
-            "speaker_id": 1,
-            "start": 9.364,
+            "speaker_id": null,
+            "start": 9.35,
             "text": " do",
-            "timing_source": "alignment"
+            "timing_source": "whisper"
           },
           {
-            "end": 9.794,
+            "end": 9.79,
             "probability": 0.9960311055183411,
-            "speaker_id": 1,
-            "start": 9.604,
+            "speaker_id": null,
+            "start": 9.57,
             "text": " for",
-            "timing_source": "alignment"
+            "timing_source": "whisper"
           },
           {
-            "end": 10.004,
+            "end": 9.95,
             "probability": 0.9969270825386047,
-            "speaker_id": 1,
-            "start": 9.794,
+            "speaker_id": null,
+            "start": 9.79,
             "text": " your",
-            "timing_source": "alignment"
+            "timing_source": "whisper"
           },
           {
-            "end": 10.21,
+            "end": 10.33,
             "probability": 0.998310923576355,
-            "speaker_id": 1,
-            "start": 10.004,
+            "speaker_id": null,
+            "start": 9.95,
             "text": " country.",
-            "timing_source": "alignment"
+            "timing_source": "whisper"
           }
         ]
       }
     ],
-    "speakers": [
-      {
-        "color_index": 0,
-        "display_name": "Speaker 1",
-        "first_start": 0.33,
-        "id": 1,
-        "label": "Speaker 1",
-        "merged_into": null,
-        "name": null,
-        "origin": "diarization",
-        "segment_count": 2,
-        "speaking_seconds": 9.22
-      }
-    ]
+    "speakers": []
   }
 }

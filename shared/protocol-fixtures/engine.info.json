@@ -43,10 +43,10 @@
       "platform": "linux",
       "python": "3.12.3"
     },
-    "pid": 5924,
+    "pid": 312,
     "protocol_version": 2,
     "python": {
-      "executable": "/Users/example/verbatim/engine/.venv/bin/python",
+      "executable": "/Users/example/verbatim/engine/.venv/bin/python3",
       "version": "3.12.3"
     },
     "schema_version": 2,

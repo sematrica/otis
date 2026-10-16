@@ -41,6 +41,7 @@ class _Running:
         self.cancel_requested = False
         self.shutdown_requested = False
         self.kill_timer: threading.Timer | None = None
+        self.monitor: threading.Thread | None = None
 
 
 class JobManager:
@@ -93,7 +94,12 @@ class JobManager:
             except subprocess.TimeoutExpired:
                 running.process.kill()
                 running.process.wait()
-            self._reconcile(running)
+            # The monitor records the outcome; wait for it so it never touches
+            # the database after the caller has closed it.
+            if running.monitor is not None:
+                running.monitor.join(timeout=5)
+            if running.monitor is None or running.monitor.is_alive():
+                self._reconcile(running)
         if self._scheduler is not None:
             self._scheduler.join(timeout=2)
 
@@ -216,7 +222,8 @@ class JobManager:
         self._running = running
         repo.mark_job_running(self.db, job_id, process.pid)
         self._announce(job_id)
-        threading.Thread(target=self._monitor, args=(running,), name=f"worker-{job_id[:8]}", daemon=True).start()
+        running.monitor = threading.Thread(target=self._monitor, args=(running,), name=f"worker-{job_id[:8]}", daemon=True)
+        running.monitor.start()
 
     def _monitor(self, running: _Running) -> None:
         assert running.process.stdout is not None

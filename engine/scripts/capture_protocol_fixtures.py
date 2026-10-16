@@ -40,13 +40,18 @@ def main() -> int:
     args = parser.parse_args()
 
     data_dir = Path(tempfile.mkdtemp(prefix="verbatim-fixtures-"))
-    for group, family, folder in (("diarization", "pyannote-wespeaker", args.diarization_dir),
-                                  ("alignment", "en-conformer-small", args.alignment_dir)):
-        if folder:  # make the installed model visible to this fresh data folder
+
+    def install_speaker_models() -> None:
+        # Make the installed models visible to this fresh data folder. Done only
+        # after the JFK part, whose fixtures show the app before the speaker and
+        # alignment models are downloaded (both stages skipped, with a reason).
+        for group, family, folder in (("diarization", "pyannote-wespeaker", args.diarization_dir),
+                                      ("alignment", "en-conformer-small", args.alignment_dir)):
             target = data_dir / "models" / group / family
             target.mkdir(parents=True)
             for item in Path(folder).iterdir():
                 (target / item.name).symlink_to(item.resolve())
+
     proc = subprocess.Popen(
         [sys.executable, "-m", "verbatim_engine", "serve", "--data-dir", str(data_dir)],
         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, bufsize=1,
@@ -117,6 +122,7 @@ def main() -> int:
     save("transcript.get", call("transcript.get", {"project_id": project["result"]["id"], "include_words": True}))
     save("export.render", call("export.render", {"project_id": project["result"]["id"], "format": "txt"}))
     if args.conversation and args.diarization_dir and args.alignment_dir:
+        install_speaker_models()
         call_project = call("projects.create", {"path": args.conversation, "title": "Call"})["result"]
         speaker_options = {**options, "diarize": True, "align": True}
         job = call("jobs.start", {"project_id": call_project["id"], "options": speaker_options})["result"]

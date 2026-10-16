@@ -1,9 +1,9 @@
 {
-  "id": 70,
+  "id": 176,
   "result": {
     "attempt": 1,
     "cancel_requested": false,
-    "created_at": "2026-10-16T04:01:37.838Z",
+    "created_at": "2026-10-16T20:50:29.153Z",
     "current_stage": "finalize",
     "effective": {
       "alignment": {
@@ -48,9 +48,9 @@
       "diarization": {
         "assigned_by_continuity": 0,
         "bounds": {},
-        "clustering_seconds": 0.305,
+        "clustering_seconds": 3.455,
         "constrained_assignment": false,
-        "embedding_seconds": 1.723,
+        "embedding_seconds": 1.786,
         "embeddings": 41,
         "embeddings_with_overlap": 0,
         "enabled": true,
@@ -58,12 +58,12 @@
         "local_speakers": 41,
         "method": "pyannote segmentation-3.0 + WeSpeaker ResNet34 + agglomerative clustering (ONNX Runtime)",
         "overlap_seconds": 1.89,
-        "segmentation_seconds": 0.246,
+        "segmentation_seconds": 0.389,
         "speakers_found": 2,
         "speakers_in_transcript": 2,
         "step_seconds": 1.0,
         "threshold": 0.7045654963945799,
-        "total_seconds": 2.275,
+        "total_seconds": 5.634,
         "training_embeddings": 37,
         "window_seconds": 10.0,
         "windows": 21
@@ -83,10 +83,10 @@
       },
       "warnings": []
     },
-    "elapsed_seconds": 10.269,
+    "elapsed_seconds": 20.898,
     "error": null,
-    "finished_at": "2026-10-16T04:01:48.109Z",
-    "id": "f35430cc18854a45a8fe6bd273891c6d",
+    "finished_at": "2026-10-16T20:50:50.053Z",
+    "id": "771ce6ffa00341ba97d6db723cd2a6ee",
     "kind": "transcribe",
     "mode": "balanced",
     "options": {
@@ -106,26 +106,26 @@
       },
       "vad": true
     },
-    "project_id": "5b1f5a8a53c84308bf261802726c3652",
+    "project_id": "76772941121343a9809b39b34716d299",
     "project_title": "Call",
     "stages": [
       {
         "detail": null,
-        "elapsed_seconds": 0.003,
+        "elapsed_seconds": 0.002,
         "eta_seconds": null,
-        "finished_at": "2026-10-16T04:01:38.003Z",
+        "finished_at": "2026-10-16T20:50:29.297Z",
         "fraction": null,
         "label": "Checking source",
         "progress": null,
         "stage": "prepare",
-        "started_at": "2026-10-16T04:01:38.000Z",
+        "started_at": "2026-10-16T20:50:29.295Z",
         "status": "completed"
       },
       {
         "detail": null,
-        "elapsed_seconds": 0.083,
+        "elapsed_seconds": 0.067,
         "eta_seconds": null,
-        "finished_at": "2026-10-16T04:01:38.086Z",
+        "finished_at": "2026-10-16T20:50:29.364Z",
         "fraction": 1.0,
         "label": "Extracting audio",
         "progress": {
@@ -134,14 +134,14 @@
           "unit": "seconds"
         },
         "stage": "extract",
-        "started_at": "2026-10-16T04:01:38.003Z",
+        "started_at": "2026-10-16T20:50:29.297Z",
         "status": "completed"
       },
       {
         "detail": "1 chunk(s)",
-        "elapsed_seconds": 0.0,
+        "elapsed_seconds": 0.001,
         "eta_seconds": null,
-        "finished_at": "2026-10-16T04:01:38.086Z",
+        "finished_at": "2026-10-16T20:50:29.365Z",
         "fraction": 1.0,
         "label": "Analyzing audio",
         "progress": {
@@ -150,26 +150,26 @@
           "unit": "seconds"
         },
         "stage": "analyze",
-        "started_at": "2026-10-16T04:01:38.086Z",
+        "started_at": "2026-10-16T20:50:29.364Z",
         "status": "completed"
       },
       {
         "detail": "Custom model (small-int8) on faster-whisper (CPU)",
-        "elapsed_seconds": 0.413,
+        "elapsed_seconds": 0.401,
         "eta_seconds": null,
-        "finished_at": "2026-10-16T04:01:38.500Z",
+        "finished_at": "2026-10-16T20:50:29.766Z",
         "fraction": null,
         "label": "Loading model",
         "progress": null,
         "stage": "load_model",
-        "started_at": "2026-10-16T04:01:38.087Z",
+        "started_at": "2026-10-16T20:50:29.365Z",
         "status": "completed"
       },
       {
         "detail": "1 of 1 chunk(s) done",
-        "elapsed_seconds": 6.259,
+        "elapsed_seconds": 6.811,
         "eta_seconds": null,
-        "finished_at": "2026-10-16T04:01:44.759Z",
+        "finished_at": "2026-10-16T20:50:36.577Z",
         "fraction": 1.0,
         "label": "Transcribing",
         "progress": {
@@ -178,14 +178,14 @@
           "unit": "seconds"
         },
         "stage": "transcribe",
-        "started_at": "2026-10-16T04:01:38.500Z",
+        "started_at": "2026-10-16T20:50:29.766Z",
         "status": "completed"
       },
       {
         "detail": "2 speaker(s) found; 2 s of overlapping speech",
-        "elapsed_seconds": 2.366,
+        "elapsed_seconds": 8.535,
         "eta_seconds": null,
-        "finished_at": "2026-10-16T04:01:47.126Z",
+        "finished_at": "2026-10-16T20:50:45.113Z",
         "fraction": 1.0,
         "label": "Identifying speakers",
         "progress": {
@@ -194,14 +194,14 @@
           "unit": "seconds"
         },
         "stage": "diarize",
-        "started_at": "2026-10-16T04:01:44.760Z",
+        "started_at": "2026-10-16T20:50:36.578Z",
         "status": "completed"
       },
       {
         "detail": "5 of 5 segment(s) aligned",
-        "elapsed_seconds": 0.959,
+        "elapsed_seconds": 4.918,
         "eta_seconds": null,
-        "finished_at": "2026-10-16T04:01:48.102Z",
+        "finished_at": "2026-10-16T20:50:50.043Z",
         "fraction": 1.0,
         "label": "Aligning words",
         "progress": {
@@ -210,24 +210,24 @@
           "unit": "seconds"
         },
         "stage": "align",
-        "started_at": "2026-10-16T04:01:47.143Z",
+        "started_at": "2026-10-16T20:50:45.125Z",
         "status": "completed"
       },
       {
         "detail": "10 segment(s), 2 speaker(s)",
-        "elapsed_seconds": 0.006,
+        "elapsed_seconds": 0.009,
         "eta_seconds": null,
-        "finished_at": "2026-10-16T04:01:48.109Z",
+        "finished_at": "2026-10-16T20:50:50.053Z",
         "fraction": null,
         "label": "Saving transcript",
         "progress": null,
         "stage": "finalize",
-        "started_at": "2026-10-16T04:01:48.103Z",
+        "started_at": "2026-10-16T20:50:50.044Z",
         "status": "completed"
       }
     ],
-    "started_at": "2026-10-16T04:01:37.840Z",
+    "started_at": "2026-10-16T20:50:29.155Z",
     "status": "completed",
-    "updated_at": "2026-10-16T04:01:48.109Z"
+    "updated_at": "2026-10-16T20:50:50.053Z"
   }
 }

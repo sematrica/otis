@@ -369,12 +369,14 @@
         ],
         "revision": null,
         "status": {
-          "downloaded_at": "2026-10-16T03:47:25.843Z",
-          "installed": true,
-          "missing": [],
+          "downloaded_at": null,
+          "installed": false,
+          "missing": [
+            "model folder"
+          ],
           "path": "/Users/example/Library/Application Support/Verbatim/models/diarization/pyannote-wespeaker",
           "revision": null,
-          "size_on_disk": 32525181
+          "size_on_disk": 0
         }
       },
       {
@@ -401,7 +403,7 @@
           "float32": 500000000
         },
         "multilingual": false,
-        "notes": "Smallest download. English only.",
+        "notes": "English only. Measured word-start error on synthetic speech: about 35 ms (Whisper alone: about 90 ms).",
         "parameters": "13M",
         "repo_id": null,
         "required_files": [
@@ -410,12 +412,14 @@
         ],
         "revision": null,
         "status": {
-          "downloaded_at": "2026-10-16T03:47:33.579Z",
-          "installed": true,
-          "missing": [],
+          "downloaded_at": null,
+          "installed": false,
+          "missing": [
+            "model folder"
+          ],
           "path": "/Users/example/Library/Application Support/Verbatim/models/alignment/en-conformer-small",
           "revision": null,
-          "size_on_disk": 85340159
+          "size_on_disk": 0
         }
       },
       {
@@ -442,7 +446,7 @@
           "float32": 800000000
         },
         "multilingual": false,
-        "notes": "More robust than Small on difficult audio. English only.",
+        "notes": "English only. Larger, but less precise than Small in our measurements (about 45 ms word-start error).",
         "parameters": "30M",
         "repo_id": null,
         "required_files": [
@@ -463,7 +467,7 @@
       },
       {
         "allow_patterns": [
-          "*.onnx"
+          "04ac86b67129634da93aea76e0147ef3.onnx"
         ],
         "approx_download_bytes": 1260000000,
         "backend": "onnx",
@@ -479,7 +483,7 @@
           "float32": 2500000000
         },
         "multilingual": true,
-        "notes": "Over 1,100 languages (non-Latin scripts are romanised). Its licence does not allow commercial use.",
+        "notes": "Over 1,100 languages (non-Latin scripts are romanised); the most precise aligner we measured (about 20 ms word-start error in English, German and Spanish). Its licence does not allow commercial use.",
         "parameters": "300M",
         "repo_id": "deskpai/ctc_forced_aligner",
         "required_files": [

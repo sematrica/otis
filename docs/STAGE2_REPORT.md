@@ -64,28 +64,41 @@ little clean speech in 30 s.
 
 | Material | Words scored | Correct |
 |----------|-------------:|--------:|
-| Real conversation, full pipeline (Whisper Small → diarization → alignment) | 68 | 98.5 % |
+| Real conversation, full pipeline (Whisper Small → diarization → alignment) | 68–71 | 98.5–98.6 % |
 | Synthetic, 2 voices | 138 | 100 % |
-| Synthetic, 3 voices | 138 | 99.3 % |
+| Synthetic, 3 voices | 138 | 99.3–100 % |
 
-Words that fall into overlapping speech in the reference are not scored.
+Ranges are over the dev container, Linux CI and macOS CI (Whisper's output
+differs slightly between CPU builds, so the word count does too). Words that
+fall into overlapping speech in the reference are not scored. In all three
+runs every word of the real conversation was force-aligned.
 
 ### Word timestamps (synthetic speech with exact word times)
 
-Mean absolute error of word start times; 138 words per voice, three voices.
+Benchmark (`engine/scripts/benchmark_word_timing.py`, GitHub Actions Linux):
+the input is what the app really has — Whisper Small's own text and word
+times — for 12 segments, 137–138 words per voice, three voices (en-us, en-us+f3,
+en-gb-scotland). Error is measured against the synthesiser's exact word times.
 
-| Timing source | Mean start error | Starts within 50 ms |
-|---------------|-----------------:|--------------------:|
-| Whisper Small alone (cross-attention DTW) | ~90 ms | ~45 % |
-| + alignment, Conformer-CTC Small | 34 ms | 73–77 % |
-| + alignment, Conformer-CTC Medium | ~44–59 ms | ~55–67 % |
-| + alignment, MMS-300M (English) | 18 ms | 96 % |
-| MMS-300M, German / Spanish | 17 ms / 12 ms | 93 % / 100 % |
+| Timing source | Mean start error | Starts within 50 ms | Segments aligned |
+|---------------|-----------------:|--------------------:|-----------------:|
+| Whisper Small alone (cross-attention DTW) | 87–95 ms | 38–47 % | — |
+| + alignment, Conformer-CTC Small (default for English) | 36 ms | 73–74 % | 36 / 36 |
+| + alignment, Conformer-CTC Medium | 48–63 ms | 55–59 % | 32 / 36 |
+| + alignment, MMS-300M | 17–18 ms | 96 % | 36 / 36 |
+
+Whisper's own times run ~75 ms early on average; the aligners' bias is under
+±4 ms (Small) or +13–17 ms (MMS). The Medium model is less precise than Small
+here (starts ~35 ms late on two voices, and 4 of 12 segments rejected for the
+Scottish voice, which then keep Whisper's times); it is last in the automatic
+preference order and not recommended. With the reference text instead of
+Whisper's (unit test, ±0.15 s jittered input times), MMS measured 20 ms
+(English, 73 words), 17 ms (German, 15 words) and 12 ms (Spanish, 14 words).
 
 The boundary rule for connected speech was fitted on two voices and checked on
 four others. On real telephone speech the Small aligner initially failed on
-most segments; two defects were found and fixed (below), after which 11 of 12
-segments aligned.
+most segments; two defects were found and fixed (below), after which every
+segment of the 30 s call aligned (76–80 words, depending on the Whisper run).
 
 ### Speed and memory (Linux container, 4 vCPU; not the target Mac)
 
@@ -119,6 +132,9 @@ target Mac has not been measured.
 6. Database migration: rebuilding the segments table would have cascade-deleted
    words; the migration runs with foreign keys off and checks them afterwards
    (tested on a Stage 1 database).
+7. Engine shutdown could close the database while a worker's monitor thread
+   was still recording the job's outcome (seen once on macOS CI as a
+   background-thread exception). Shutdown now waits for that thread.
 
 ## Known limitations
 

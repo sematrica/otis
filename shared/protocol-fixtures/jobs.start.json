@@ -3,13 +3,13 @@
   "result": {
     "attempt": 0,
     "cancel_requested": false,
-    "created_at": "2026-10-16T04:01:32.060Z",
+    "created_at": "2026-10-16T20:50:01.992Z",
     "current_stage": null,
     "effective": null,
     "elapsed_seconds": null,
     "error": null,
     "finished_at": null,
-    "id": "a7e23f9de3c74e4d9ff9084062ab1a24",
+    "id": "37646741391c4a13b202f5485fa3100e",
     "kind": "transcribe",
     "mode": "balanced",
     "options": {
@@ -29,7 +29,7 @@
       },
       "vad": true
     },
-    "project_id": "fc8cb360ed9742d0a418729982cd2f86",
+    "project_id": "1ddb11a11f3a4123a81428d7e444842b",
     "project_title": "JFK",
     "stages": [
       {
@@ -131,6 +131,6 @@
     ],
     "started_at": null,
     "status": "queued",
-    "updated_at": "2026-10-16T04:01:32.060Z"
+    "updated_at": "2026-10-16T20:50:01.992Z"
   }
 }

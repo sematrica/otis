@@ -20,17 +20,15 @@
     },
     "resolved": {
       "alignment": {
-        "candidates": [
-          "alignment/en-conformer-small"
-        ],
-        "enabled": true,
-        "skip_reason": null
+        "candidates": [],
+        "enabled": false,
+        "skip_reason": "No word-alignment model is installed; word times come from Whisper."
       },
       "backend": "faster-whisper",
       "chunk_seconds": 600.0,
       "diarization": {
-        "enabled": true,
-        "skip_reason": null,
+        "enabled": false,
+        "skip_reason": "The speaker identification model is not installed.",
         "speakers": {}
       },
       "mode": "balanced",
