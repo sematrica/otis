@@ -1,5 +1,5 @@
 {
-  "id": 226,
+  "id": 510,
   "result": {
     "changed": true,
     "summary": "Remove passage at 00:00:08",
@@ -47,9 +47,9 @@
         "diarization": {
           "assigned_by_continuity": 0,
           "bounds": {},
-          "clustering_seconds": 0.32,
+          "clustering_seconds": 4.285,
           "constrained_assignment": false,
-          "embedding_seconds": 1.647,
+          "embedding_seconds": 2.983,
           "embeddings": 41,
           "embeddings_with_overlap": 0,
           "enabled": true,
@@ -57,12 +57,12 @@
           "local_speakers": 41,
           "method": "pyannote segmentation-3.0 + WeSpeaker ResNet34 + agglomerative clustering (ONNX Runtime)",
           "overlap_seconds": 1.89,
-          "segmentation_seconds": 0.23,
+          "segmentation_seconds": 0.483,
           "speakers_found": 2,
           "speakers_in_transcript": 2,
           "step_seconds": 1.0,
           "threshold": 0.7045654963945799,
-          "total_seconds": 2.199,
+          "total_seconds": 7.755,
           "training_embeddings": 37,
           "window_seconds": 10.0,
           "windows": 21
@@ -119,14 +119,14 @@
         "redo_summary": null,
         "undo_summary": "Remove passage at 00:00:08"
       },
-      "job_id": "945825203c934f4c8fd178105478961e",
+      "job_id": "1e069d14cf57450d80111bd59cbbab75",
       "language": "en",
       "merged_speakers": [],
-      "project_id": "6ffd1e7be9c44bb49ef99687dc308727",
+      "project_id": "5d4dedb8b2f247e4828e21ca571d4abb",
       "revision": 7,
       "segments": [
         {
-          "avg_logprob": -0.19121470668765364,
+          "avg_logprob": -0.19121492837296158,
           "chunk_index": 0,
           "compression_ratio": 1.7061224489795919,
           "end": 8.444,
@@ -164,14 +164,14 @@
               "type": "rechecked"
             },
             {
-              "at": "2026-10-17T04:30:44.235Z",
+              "at": "2026-10-17T15:00:54.890Z",
               "by": "user",
               "type": "reviewed"
             }
           ],
-          "id": 9,
+          "id": 7,
           "language": "en",
-          "no_speech_prob": 0.10679536312818527,
+          "no_speech_prob": 0.10679572820663452,
           "ordinal": 0,
           "original_speaker_id": 1,
           "original_text": " Hello. Hello. Oh,",
@@ -185,7 +185,7 @@
           "words": [
             {
               "end": 7.1,
-              "probability": 0.7243173122406006,
+              "probability": 0.7243170142173767,
               "speaker_id": 1,
               "start": 6.67,
               "text": " Hello.",
@@ -193,7 +193,7 @@
             },
             {
               "end": 8.143,
-              "probability": 0.744469404220581,
+              "probability": 0.74446702003479,
               "speaker_id": 1,
               "start": 7.59,
               "text": " Hello.",
@@ -201,7 +201,7 @@
             },
             {
               "end": 8.444,
-              "probability": 0.8939575552940369,
+              "probability": 0.8939577341079712,
               "speaker_id": 1,
               "start": 8.143,
               "text": " Oh,",
@@ -210,7 +210,7 @@
           ]
         },
         {
-          "avg_logprob": -0.19121470668765364,
+          "avg_logprob": -0.19121492837296158,
           "chunk_index": 0,
           "compression_ratio": 1.7061224489795919,
           "end": 10.524,
@@ -233,9 +233,9 @@
               ]
             }
           ],
-          "id": 11,
+          "id": 9,
           "language": "en",
-          "no_speech_prob": 0.10679536312818527,
+          "no_speech_prob": 0.10679572820663452,
           "ordinal": 1,
           "original_speaker_id": 1,
           "original_text": " Neither did",
@@ -249,7 +249,7 @@
           "words": [
             {
               "end": 10.33,
-              "probability": 0.7254170179367065,
+              "probability": 0.7254167199134827,
               "speaker_id": 1,
               "start": 9.873,
               "text": " Neither",
@@ -257,7 +257,7 @@
             },
             {
               "end": 10.524,
-              "probability": 0.9922907948493958,
+              "probability": 0.9922906756401062,
               "speaker_id": 1,
               "start": 10.33,
               "text": " did",
@@ -266,7 +266,7 @@
           ]
         },
         {
-          "avg_logprob": -0.19121470668765364,
+          "avg_logprob": -0.19121492837296158,
           "chunk_index": 0,
           "compression_ratio": 1.7061224489795919,
           "end": 12.44,
@@ -297,9 +297,9 @@
               "type": "overlapping_speech"
             }
           ],
-          "id": 12,
+          "id": 10,
           "language": "en",
-          "no_speech_prob": 0.10679536312818527,
+          "no_speech_prob": 0.10679572820663452,
           "ordinal": 2,
           "original_speaker_id": 2,
           "original_text": " I. Okay. I thought, you know, I heard it deep.",
@@ -321,7 +321,7 @@
             },
             {
               "end": 11.194,
-              "probability": 0.491817831993103,
+              "probability": 0.49181610345840454,
               "speaker_id": 2,
               "start": 10.913,
               "text": " Okay.",
@@ -329,7 +329,7 @@
             },
             {
               "end": 11.34,
-              "probability": 0.8789454698562622,
+              "probability": 0.8789461851119995,
               "speaker_id": 2,
               "start": 11.194,
               "text": " I",
@@ -345,7 +345,7 @@
             },
             {
               "end": 11.785,
-              "probability": 0.9331567287445068,
+              "probability": 0.9331557154655457,
               "speaker_id": 2,
               "start": 11.72,
               "text": " you",
@@ -377,7 +377,7 @@
             },
             {
               "end": 12.265,
-              "probability": 0.4468826353549957,
+              "probability": 0.44688233733177185,
               "speaker_id": 2,
               "start": 12.154,
               "text": " it",
@@ -385,7 +385,7 @@
             },
             {
               "end": 12.44,
-              "probability": 0.8353279232978821,
+              "probability": 0.8353297114372253,
               "speaker_id": 2,
               "start": 12.265,
               "text": " deep.",
@@ -394,7 +394,7 @@
           ]
         },
         {
-          "avg_logprob": -0.19121470668765364,
+          "avg_logprob": -0.19121492837296158,
           "chunk_index": 0,
           "compression_ratio": 1.7061224489795919,
           "end": 14.474,
@@ -417,9 +417,9 @@
               ]
             }
           ],
-          "id": 13,
+          "id": 11,
           "language": "en",
-          "no_speech_prob": 0.10679536312818527,
+          "no_speech_prob": 0.10679572820663452,
           "ordinal": 3,
           "original_speaker_id": 2,
           "original_text": " This is Diane in New Jersey. And",
@@ -449,7 +449,7 @@
             },
             {
               "end": 13.305,
-              "probability": 0.8861352205276489,
+              "probability": 0.8861348628997803,
               "speaker_id": 2,
               "start": 12.87,
               "text": " Diane",
@@ -457,7 +457,7 @@
             },
             {
               "end": 13.41,
-              "probability": 0.9761264324188232,
+              "probability": 0.9761263132095337,
               "speaker_id": 2,
               "start": 13.305,
               "text": " in",
@@ -481,7 +481,7 @@
             },
             {
               "end": 14.474,
-              "probability": 0.9056089520454407,
+              "probability": 0.905608594417572,
               "speaker_id": 2,
               "start": 14.238,
               "text": " And",
@@ -490,7 +490,7 @@
           ]
         },
         {
-          "avg_logprob": -0.19121470668765364,
+          "avg_logprob": -0.19121492837296158,
           "chunk_index": 0,
           "compression_ratio": 1.7061224489795919,
           "end": 17.82,
@@ -513,9 +513,9 @@
               ]
             }
           ],
-          "id": 14,
+          "id": 12,
           "language": "en",
-          "no_speech_prob": 0.10679536312818527,
+          "no_speech_prob": 0.10679572820663452,
           "ordinal": 4,
           "original_speaker_id": 1,
           "original_text": " I'm Sheila in Texas, originally from Chicago.",
@@ -529,7 +529,7 @@
           "words": [
             {
               "end": 14.754,
-              "probability": 0.9765461683273315,
+              "probability": 0.9765462875366211,
               "speaker_id": 1,
               "start": 14.474,
               "text": " I'm",
@@ -537,7 +537,7 @@
             },
             {
               "end": 15.284,
-              "probability": 0.9663477540016174,
+              "probability": 0.9663476943969727,
               "speaker_id": 1,
               "start": 14.754,
               "text": " Sheila",
@@ -545,7 +545,7 @@
             },
             {
               "end": 15.549,
-              "probability": 0.9297434091567993,
+              "probability": 0.9297425746917725,
               "speaker_id": 1,
               "start": 15.284,
               "text": " in",
@@ -586,14 +586,14 @@
           ]
         },
         {
-          "avg_logprob": -0.19121470668765364,
+          "avg_logprob": -0.19121492837296158,
           "chunk_index": 0,
           "compression_ratio": 1.7061224489795919,
           "end": 21.43,
           "flags": [],
-          "id": 15,
+          "id": 13,
           "language": "en",
-          "no_speech_prob": 0.10679536312818527,
+          "no_speech_prob": 0.10679572820663452,
           "ordinal": 5,
           "original_speaker_id": 2,
           "original_text": "Oh, I'm originally from Chicago also. I'm in New Jersey now, though.",
@@ -615,7 +615,7 @@
             },
             {
               "end": 18.61,
-              "probability": 0.975958377122879,
+              "probability": 0.975958526134491,
               "speaker_id": 2,
               "start": 18.278,
               "text": " I'm",
@@ -655,7 +655,7 @@
             },
             {
               "end": 20.265,
-              "probability": 0.9978378415107727,
+              "probability": 0.9978379011154175,
               "speaker_id": 2,
               "start": 20.01,
               "text": " I'm",
@@ -704,7 +704,7 @@
           ]
         },
         {
-          "avg_logprob": -0.19121470668765364,
+          "avg_logprob": -0.19121492837296158,
           "chunk_index": 0,
           "compression_ratio": 1.7061224489795919,
           "end": 28.084,
@@ -727,9 +727,9 @@
               ]
             }
           ],
-          "id": 16,
+          "id": 14,
           "language": "en",
-          "no_speech_prob": 0.10679536312818527,
+          "no_speech_prob": 0.10679572820663452,
           "ordinal": 6,
           "original_speaker_id": 1,
           "original_text": " Well, there is not much difference. At least, you know, they all call me a Yankee down here, so what kind",
@@ -759,7 +759,7 @@
             },
             {
               "end": 22.749,
-              "probability": 0.45378804206848145,
+              "probability": 0.45378658175468445,
               "speaker_id": 1,
               "start": 22.499,
               "text": " is",
@@ -767,7 +767,7 @@
             },
             {
               "end": 22.979,
-              "probability": 0.8868041634559631,
+              "probability": 0.8868041038513184,
               "speaker_id": 1,
               "start": 22.749,
               "text": " not",
@@ -783,7 +783,7 @@
             },
             {
               "end": 23.85,
-              "probability": 0.9889824986457825,
+              "probability": 0.9889822602272034,
               "speaker_id": 1,
               "start": 23.38,
               "text": " difference.",
@@ -807,7 +807,7 @@
             },
             {
               "end": 25.05,
-              "probability": 0.8790842890739441,
+              "probability": 0.8790826797485352,
               "speaker_id": 1,
               "start": 24.49,
               "text": " you",
@@ -831,7 +831,7 @@
             },
             {
               "end": 25.55,
-              "probability": 0.9916398525238037,
+              "probability": 0.9916399717330933,
               "speaker_id": 1,
               "start": 25.354,
               "text": " all",
@@ -839,7 +839,7 @@
             },
             {
               "end": 25.854,
-              "probability": 0.9883930087089539,
+              "probability": 0.9883931279182434,
               "speaker_id": 1,
               "start": 25.62,
               "text": " call",
@@ -855,7 +855,7 @@
             },
             {
               "end": 26.274,
-              "probability": 0.9885349869728088,
+              "probability": 0.9885352253913879,
               "speaker_id": 1,
               "start": 26.099,
               "text": " a",
@@ -863,7 +863,7 @@
             },
             {
               "end": 26.819,
-              "probability": 0.9635701477527618,
+              "probability": 0.9635702073574066,
               "speaker_id": 1,
               "start": 26.274,
               "text": " Yankee",
@@ -871,7 +871,7 @@
             },
             {
               "end": 27.069,
-              "probability": 0.9841572642326355,
+              "probability": 0.984157383441925,
               "speaker_id": 1,
               "start": 26.819,
               "text": " down",
@@ -895,7 +895,7 @@
             },
             {
               "end": 27.81,
-              "probability": 0.7470183968544006,
+              "probability": 0.7470196485519409,
               "speaker_id": 1,
               "start": 27.629,
               "text": " what",
@@ -903,7 +903,7 @@
             },
             {
               "end": 28.084,
-              "probability": 0.6303541660308838,
+              "probability": 0.6303556561470032,
               "speaker_id": 1,
               "start": 27.87,
               "text": " kind",
@@ -912,7 +912,7 @@
           ]
         },
         {
-          "avg_logprob": -0.19121470668765364,
+          "avg_logprob": -0.19121492837296158,
           "chunk_index": 0,
           "compression_ratio": 1.7061224489795919,
           "end": 28.354,
@@ -943,9 +943,9 @@
               "type": "overlapping_speech"
             }
           ],
-          "id": 17,
+          "id": 15,
           "language": "en",
-          "no_speech_prob": 0.10679536312818527,
+          "no_speech_prob": 0.10679572820663452,
           "ordinal": 7,
           "original_speaker_id": 2,
           "original_text": " of thing?",
@@ -959,7 +959,7 @@
           "words": [
             {
               "end": 28.225,
-              "probability": 0.9762318730354309,
+              "probability": 0.9762319922447205,
               "speaker_id": 2,
               "start": 28.084,
               "text": " of",
@@ -967,7 +967,7 @@
             },
             {
               "end": 28.354,
-              "probability": 0.9160973429679871,
+              "probability": 0.9160974621772766,
               "speaker_id": 2,
               "start": 28.225,
               "text": " thing?",
@@ -976,14 +976,14 @@
           ]
         },
         {
-          "avg_logprob": -0.19121470668765364,
+          "avg_logprob": -0.19121492837296158,
           "chunk_index": 0,
           "compression_ratio": 1.7061224489795919,
           "end": 30.0,
           "flags": [],
-          "id": 18,
+          "id": 16,
           "language": "en",
-          "no_speech_prob": 0.10679536312818527,
+          "no_speech_prob": 0.10679572820663452,
           "ordinal": 8,
           "original_speaker_id": 2,
           "original_text": "Oh, I don't hear that in New Jersey now.",
@@ -997,7 +997,7 @@
           "words": [
             {
               "end": 28.44,
-              "probability": 0.8440057039260864,
+              "probability": 0.8440042734146118,
               "speaker_id": 2,
               "start": 28.354,
               "text": " Oh,",
@@ -1005,7 +1005,7 @@
             },
             {
               "end": 28.505,
-              "probability": 0.996473491191864,
+              "probability": 0.9964733719825745,
               "speaker_id": 2,
               "start": 28.44,
               "text": " I",
@@ -1013,7 +1013,7 @@
             },
             {
               "end": 28.73,
-              "probability": 0.9992268681526184,
+              "probability": 0.9992268085479736,
               "speaker_id": 2,
               "start": 28.505,
               "text": " don't",
@@ -1021,7 +1021,7 @@
             },
             {
               "end": 28.93,
-              "probability": 0.994803249835968,
+              "probability": 0.9948031306266785,
               "speaker_id": 2,
               "start": 28.73,
               "text": " hear",
@@ -1037,7 +1037,7 @@
             },
             {
               "end": 29.145,
-              "probability": 0.5647179484367371,
+              "probability": 0.5647207498550415,
               "speaker_id": 2,
               "start": 29.05,
               "text": " in",
@@ -1061,7 +1061,7 @@
             },
             {
               "end": 30.0,
-              "probability": 0.9119914770126343,
+              "probability": 0.9119917750358582,
               "speaker_id": 2,
               "start": 29.69,
               "text": " now.",

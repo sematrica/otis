@@ -3,13 +3,13 @@
   "params": {
     "attempt": 1,
     "cancel_requested": false,
-    "created_at": "2026-10-17T04:29:52.208Z",
+    "created_at": "2026-10-17T14:58:35.275Z",
     "current_stage": "extract",
     "effective": null,
-    "elapsed_seconds": 0.144,
+    "elapsed_seconds": 0.42,
     "error": null,
     "finished_at": null,
-    "id": "e76170e57a6c41c7a9aef5e1562c7313",
+    "id": "d58bb8dcc7dd4f2c8ae2f1e912282ff8",
     "kind": "transcribe",
     "mode": "balanced",
     "options": {
@@ -30,25 +30,25 @@
       },
       "vad": true
     },
-    "project_id": "7b1da3d552d9407ab89cc40ed7ea6a95",
+    "project_id": "77d5ea44527440c7b79f576a9e89b1a8",
     "project_title": "JFK",
     "queue_position": null,
     "stages": [
       {
         "detail": null,
-        "elapsed_seconds": 0.001,
+        "elapsed_seconds": 0.002,
         "eta_seconds": null,
-        "finished_at": "2026-10-17T04:29:52.350Z",
+        "finished_at": "2026-10-17T14:58:35.697Z",
         "fraction": null,
         "label": "Checking source",
         "progress": null,
         "stage": "prepare",
-        "started_at": "2026-10-17T04:29:52.349Z",
+        "started_at": "2026-10-17T14:58:35.695Z",
         "status": "completed"
       },
       {
         "detail": null,
-        "elapsed_seconds": 0.004,
+        "elapsed_seconds": 0.001,
         "eta_seconds": null,
         "finished_at": null,
         "fraction": 0.0,
@@ -59,7 +59,7 @@
           "unit": "seconds"
         },
         "stage": "extract",
-        "started_at": "2026-10-17T04:29:52.350Z",
+        "started_at": "2026-10-17T14:58:35.697Z",
         "status": "running"
       },
       {
@@ -171,8 +171,8 @@
         "status": "pending"
       }
     ],
-    "started_at": "2026-10-17T04:29:52.210Z",
+    "started_at": "2026-10-17T14:58:35.278Z",
     "status": "running",
-    "updated_at": "2026-10-17T04:29:52.350Z"
+    "updated_at": "2026-10-17T14:58:35.697Z"
   }
 }

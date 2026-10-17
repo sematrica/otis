@@ -1,16 +1,16 @@
 {
-  "id": 72,
+  "id": 197,
   "result": {
     "job": {
       "attempt": 0,
       "cancel_requested": false,
-      "created_at": "2026-10-17T04:30:03.700Z",
+      "created_at": "2026-10-17T14:59:25.937Z",
       "current_stage": null,
       "effective": null,
       "elapsed_seconds": null,
       "error": null,
       "finished_at": null,
-      "id": "a21e21e6fefe4ae192a3681c6291cf18",
+      "id": "d852aaf266d34462831ee94b592e565d",
       "kind": "youtube",
       "mode": "balanced",
       "options": {
@@ -44,7 +44,7 @@
           "video": false
         }
       },
-      "project_id": "aaef71378b094602ad6386da353e7fa0",
+      "project_id": "db140125f90f4684a3803998b5590f63",
       "project_title": "JFK talk (1)",
       "queue_position": 1,
       "stages": [
@@ -195,15 +195,15 @@
       ],
       "started_at": null,
       "status": "queued",
-      "updated_at": "2026-10-17T04:30:03.700Z"
+      "updated_at": "2026-10-17T14:59:25.937Z"
     },
     "project": {
-      "created_at": "2026-10-17T04:30:03.699Z",
+      "created_at": "2026-10-17T14:59:25.936Z",
       "duration": null,
       "has_video": false,
-      "id": "aaef71378b094602ad6386da353e7fa0",
+      "id": "db140125f90f4684a3803998b5590f63",
       "language": null,
-      "last_job_id": "a21e21e6fefe4ae192a3681c6291cf18",
+      "last_job_id": "d852aaf266d34462831ee94b592e565d",
       "media": null,
       "segment_count": 0,
       "source": {
@@ -216,7 +216,7 @@
       "source_meta": {
         "ads_note": "Transcribed from the media file retrieved from YouTube. Ads that YouTube inserts while a video plays are not part of that file and are not transcribed. Sponsor messages or ads that are part of the video itself are transcribed like any other speech.",
         "authorization": {
-          "confirmed_at": "2026-10-17T04:30:03.699Z",
+          "confirmed_at": "2026-10-17T14:59:25.936Z",
           "statement": "I am authorized to download and transcribe this video: it is my own, it is licensed for reuse, or I have the rights holder's permission."
         },
         "channel": null,
@@ -247,7 +247,7 @@
       },
       "status": "queued",
       "title": "JFK talk (1)",
-      "updated_at": "2026-10-17T04:30:03.700Z"
+      "updated_at": "2026-10-17T14:59:25.937Z"
     }
   }
 }

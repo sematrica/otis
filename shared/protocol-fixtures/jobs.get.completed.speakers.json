@@ -1,9 +1,9 @@
 {
-  "id": 146,
+  "id": 368,
   "result": {
     "attempt": 1,
     "cancel_requested": false,
-    "created_at": "2026-10-17T04:30:08.246Z",
+    "created_at": "2026-10-17T14:59:34.732Z",
     "current_stage": "finalize",
     "effective": {
       "alignment": {
@@ -48,9 +48,9 @@
       "diarization": {
         "assigned_by_continuity": 0,
         "bounds": {},
-        "clustering_seconds": 0.32,
+        "clustering_seconds": 4.285,
         "constrained_assignment": false,
-        "embedding_seconds": 1.647,
+        "embedding_seconds": 2.983,
         "embeddings": 41,
         "embeddings_with_overlap": 0,
         "enabled": true,
@@ -58,12 +58,12 @@
         "local_speakers": 41,
         "method": "pyannote segmentation-3.0 + WeSpeaker ResNet34 + agglomerative clustering (ONNX Runtime)",
         "overlap_seconds": 1.89,
-        "segmentation_seconds": 0.23,
+        "segmentation_seconds": 0.483,
         "speakers_found": 2,
         "speakers_in_transcript": 2,
         "step_seconds": 1.0,
         "threshold": 0.7045654963945799,
-        "total_seconds": 2.199,
+        "total_seconds": 7.755,
         "training_embeddings": 37,
         "window_seconds": 10.0,
         "windows": 21
@@ -113,10 +113,10 @@
         "Wordings are compared acoustically only in languages an installed word-alignment model supports; elsewhere, differing wordings are listed for review instead."
       ]
     },
-    "elapsed_seconds": 15.577,
+    "elapsed_seconds": 41.002,
     "error": null,
-    "finished_at": "2026-10-17T04:30:23.825Z",
-    "id": "945825203c934f4c8fd178105478961e",
+    "finished_at": "2026-10-17T15:00:15.737Z",
+    "id": "1e069d14cf57450d80111bd59cbbab75",
     "kind": "transcribe",
     "mode": "maximum",
     "options": {
@@ -137,7 +137,7 @@
       },
       "vad": true
     },
-    "project_id": "6ffd1e7be9c44bb49ef99687dc308727",
+    "project_id": "5d4dedb8b2f247e4828e21ca571d4abb",
     "project_title": "Call",
     "queue_position": null,
     "stages": [
@@ -145,19 +145,19 @@
         "detail": null,
         "elapsed_seconds": 0.003,
         "eta_seconds": null,
-        "finished_at": "2026-10-17T04:30:08.385Z",
+        "finished_at": "2026-10-17T14:59:34.935Z",
         "fraction": null,
         "label": "Checking source",
         "progress": null,
         "stage": "prepare",
-        "started_at": "2026-10-17T04:30:08.382Z",
+        "started_at": "2026-10-17T14:59:34.932Z",
         "status": "completed"
       },
       {
         "detail": null,
-        "elapsed_seconds": 0.059,
+        "elapsed_seconds": 0.081,
         "eta_seconds": null,
-        "finished_at": "2026-10-17T04:30:08.444Z",
+        "finished_at": "2026-10-17T14:59:35.016Z",
         "fraction": 1.0,
         "label": "Extracting audio",
         "progress": {
@@ -166,14 +166,14 @@
           "unit": "seconds"
         },
         "stage": "extract",
-        "started_at": "2026-10-17T04:30:08.385Z",
+        "started_at": "2026-10-17T14:59:34.935Z",
         "status": "completed"
       },
       {
         "detail": "1 chunk(s)",
-        "elapsed_seconds": 0.001,
+        "elapsed_seconds": 0.0,
         "eta_seconds": null,
-        "finished_at": "2026-10-17T04:30:08.445Z",
+        "finished_at": "2026-10-17T14:59:35.017Z",
         "fraction": 1.0,
         "label": "Analyzing audio",
         "progress": {
@@ -182,26 +182,26 @@
           "unit": "seconds"
         },
         "stage": "analyze",
-        "started_at": "2026-10-17T04:30:08.444Z",
+        "started_at": "2026-10-17T14:59:35.017Z",
         "status": "completed"
       },
       {
         "detail": "Custom model (small-int8) on faster-whisper (CPU)",
-        "elapsed_seconds": 2.335,
+        "elapsed_seconds": 5.031,
         "eta_seconds": null,
-        "finished_at": "2026-10-17T04:30:10.780Z",
+        "finished_at": "2026-10-17T14:59:40.048Z",
         "fraction": null,
         "label": "Loading model",
         "progress": null,
         "stage": "load_model",
-        "started_at": "2026-10-17T04:30:08.445Z",
+        "started_at": "2026-10-17T14:59:35.017Z",
         "status": "completed"
       },
       {
         "detail": "1 of 1 chunk(s) done",
-        "elapsed_seconds": 9.712,
+        "elapsed_seconds": 16.706,
         "eta_seconds": null,
-        "finished_at": "2026-10-17T04:30:20.492Z",
+        "finished_at": "2026-10-17T14:59:56.754Z",
         "fraction": 1.0,
         "label": "Transcribing",
         "progress": {
@@ -210,14 +210,14 @@
           "unit": "seconds"
         },
         "stage": "transcribe",
-        "started_at": "2026-10-17T04:30:10.780Z",
+        "started_at": "2026-10-17T14:59:40.048Z",
         "status": "completed"
       },
       {
         "detail": "2 speaker(s) found; 2 s of overlapping speech",
-        "elapsed_seconds": 2.273,
+        "elapsed_seconds": 12.226,
         "eta_seconds": null,
-        "finished_at": "2026-10-17T04:30:22.766Z",
+        "finished_at": "2026-10-17T15:00:08.983Z",
         "fraction": 1.0,
         "label": "Identifying speakers",
         "progress": {
@@ -226,14 +226,14 @@
           "unit": "seconds"
         },
         "stage": "diarize",
-        "started_at": "2026-10-17T04:30:20.493Z",
+        "started_at": "2026-10-17T14:59:56.757Z",
         "status": "completed"
       },
       {
         "detail": "5 of 5 segment(s) aligned",
-        "elapsed_seconds": 0.972,
+        "elapsed_seconds": 6.638,
         "eta_seconds": null,
-        "finished_at": "2026-10-17T04:30:23.763Z",
+        "finished_at": "2026-10-17T15:00:15.641Z",
         "fraction": 1.0,
         "label": "Aligning words",
         "progress": {
@@ -242,14 +242,14 @@
           "unit": "seconds"
         },
         "stage": "align",
-        "started_at": "2026-10-17T04:30:22.791Z",
+        "started_at": "2026-10-17T15:00:09.003Z",
         "status": "completed"
       },
       {
         "detail": "1 repetition(s)",
-        "elapsed_seconds": 0.054,
+        "elapsed_seconds": 0.084,
         "eta_seconds": null,
-        "finished_at": "2026-10-17T04:30:23.821Z",
+        "finished_at": "2026-10-17T15:00:15.733Z",
         "fraction": 0.0,
         "label": "Checking quality",
         "progress": {
@@ -258,48 +258,48 @@
           "unit": "seconds"
         },
         "stage": "quality",
-        "started_at": "2026-10-17T04:30:23.767Z",
+        "started_at": "2026-10-17T15:00:15.649Z",
         "status": "completed"
       },
       {
         "detail": "No doubtful passages to re-check.",
         "elapsed_seconds": 0.0,
         "eta_seconds": null,
-        "finished_at": "2026-10-17T04:30:23.821Z",
+        "finished_at": "2026-10-17T15:00:15.733Z",
         "fraction": null,
         "label": "Re-checking doubtful passages",
         "progress": null,
         "stage": "retranscribe",
-        "started_at": "2026-10-17T04:30:23.821Z",
+        "started_at": "2026-10-17T15:00:15.733Z",
         "status": "completed"
       },
       {
         "detail": "2 passage(s) to review",
-        "elapsed_seconds": 0.0,
+        "elapsed_seconds": 0.001,
         "eta_seconds": null,
-        "finished_at": "2026-10-17T04:30:23.822Z",
+        "finished_at": "2026-10-17T15:00:15.734Z",
         "fraction": null,
         "label": "Validating transcript",
         "progress": null,
         "stage": "validate",
-        "started_at": "2026-10-17T04:30:23.822Z",
+        "started_at": "2026-10-17T15:00:15.733Z",
         "status": "completed"
       },
       {
         "detail": "10 segment(s), 2 speaker(s)",
         "elapsed_seconds": 0.003,
         "eta_seconds": null,
-        "finished_at": "2026-10-17T04:30:23.825Z",
+        "finished_at": "2026-10-17T15:00:15.737Z",
         "fraction": null,
         "label": "Saving transcript",
         "progress": null,
         "stage": "finalize",
-        "started_at": "2026-10-17T04:30:23.822Z",
+        "started_at": "2026-10-17T15:00:15.734Z",
         "status": "completed"
       }
     ],
-    "started_at": "2026-10-17T04:30:08.248Z",
+    "started_at": "2026-10-17T14:59:34.735Z",
     "status": "completed",
-    "updated_at": "2026-10-17T04:30:23.825Z"
+    "updated_at": "2026-10-17T15:00:15.737Z"
   }
 }

@@ -117,10 +117,13 @@ class JobManager:
     def queue_state(self) -> dict[str, Any]:
         with self._lock:
             running = self._running.job_id if self._running else None
+        job = repo.get_job(self.db, running) if running else None
+        if job is not None and job["status"] != "running":
+            job = None  # the worker has recorded its outcome; its exit is not yet noticed
         return {
             "paused": bool(repo.get_setting(self.db, SETTING_PAUSED, False)),
             "auto_resume": bool(repo.get_setting(self.db, SETTING_AUTO_RESUME, True)),
-            "running": repo.get_job(self.db, running) if running else None,
+            "running": job,
             "queued": [repo.get_job(self.db, job_id) for job_id in repo.queued_job_ids(self.db)],
         }
 

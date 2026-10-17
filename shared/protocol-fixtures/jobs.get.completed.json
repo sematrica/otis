@@ -1,9 +1,9 @@
 {
-  "id": 24,
+  "id": 131,
   "result": {
     "attempt": 1,
     "cancel_requested": false,
-    "created_at": "2026-10-17T04:29:52.208Z",
+    "created_at": "2026-10-17T14:58:35.275Z",
     "current_stage": "finalize",
     "effective": {
       "alignment": {
@@ -81,10 +81,10 @@
       },
       "warnings": []
     },
-    "elapsed_seconds": 3.909,
+    "elapsed_seconds": 36.168,
     "error": null,
-    "finished_at": "2026-10-17T04:29:56.119Z",
-    "id": "e76170e57a6c41c7a9aef5e1562c7313",
+    "finished_at": "2026-10-17T14:59:11.446Z",
+    "id": "d58bb8dcc7dd4f2c8ae2f1e912282ff8",
     "kind": "transcribe",
     "mode": "balanced",
     "options": {
@@ -105,27 +105,27 @@
       },
       "vad": true
     },
-    "project_id": "7b1da3d552d9407ab89cc40ed7ea6a95",
+    "project_id": "77d5ea44527440c7b79f576a9e89b1a8",
     "project_title": "JFK",
     "queue_position": null,
     "stages": [
       {
         "detail": null,
-        "elapsed_seconds": 0.001,
+        "elapsed_seconds": 0.002,
         "eta_seconds": null,
-        "finished_at": "2026-10-17T04:29:52.350Z",
+        "finished_at": "2026-10-17T14:58:35.697Z",
         "fraction": null,
         "label": "Checking source",
         "progress": null,
         "stage": "prepare",
-        "started_at": "2026-10-17T04:29:52.349Z",
+        "started_at": "2026-10-17T14:58:35.695Z",
         "status": "completed"
       },
       {
         "detail": null,
-        "elapsed_seconds": 0.054,
+        "elapsed_seconds": 0.113,
         "eta_seconds": null,
-        "finished_at": "2026-10-17T04:29:52.404Z",
+        "finished_at": "2026-10-17T14:58:35.810Z",
         "fraction": 1.0,
         "label": "Extracting audio",
         "progress": {
@@ -134,14 +134,14 @@
           "unit": "seconds"
         },
         "stage": "extract",
-        "started_at": "2026-10-17T04:29:52.350Z",
+        "started_at": "2026-10-17T14:58:35.697Z",
         "status": "completed"
       },
       {
         "detail": "1 chunk(s)",
         "elapsed_seconds": 0.0,
         "eta_seconds": null,
-        "finished_at": "2026-10-17T04:29:52.404Z",
+        "finished_at": "2026-10-17T14:58:35.811Z",
         "fraction": 1.0,
         "label": "Analyzing audio",
         "progress": {
@@ -150,26 +150,26 @@
           "unit": "seconds"
         },
         "stage": "analyze",
-        "started_at": "2026-10-17T04:29:52.404Z",
+        "started_at": "2026-10-17T14:58:35.811Z",
         "status": "completed"
       },
       {
         "detail": "Custom model (small-int8) on faster-whisper (CPU)",
-        "elapsed_seconds": 0.397,
+        "elapsed_seconds": 26.371,
         "eta_seconds": null,
-        "finished_at": "2026-10-17T04:29:52.801Z",
+        "finished_at": "2026-10-17T14:59:02.182Z",
         "fraction": null,
         "label": "Loading model",
         "progress": null,
         "stage": "load_model",
-        "started_at": "2026-10-17T04:29:52.404Z",
+        "started_at": "2026-10-17T14:58:35.811Z",
         "status": "completed"
       },
       {
         "detail": "1 of 1 chunk(s) done",
-        "elapsed_seconds": 3.293,
+        "elapsed_seconds": 9.226,
         "eta_seconds": null,
-        "finished_at": "2026-10-17T04:29:56.094Z",
+        "finished_at": "2026-10-17T14:59:11.408Z",
         "fraction": 1.0,
         "label": "Transcribing",
         "progress": {
@@ -178,38 +178,38 @@
           "unit": "seconds"
         },
         "stage": "transcribe",
-        "started_at": "2026-10-17T04:29:52.801Z",
+        "started_at": "2026-10-17T14:59:02.182Z",
         "status": "completed"
       },
       {
         "detail": "The speaker identification model is not installed.",
-        "elapsed_seconds": 0.0,
+        "elapsed_seconds": 0.001,
         "eta_seconds": null,
-        "finished_at": "2026-10-17T04:29:56.095Z",
+        "finished_at": "2026-10-17T14:59:11.410Z",
         "fraction": null,
         "label": "Identifying speakers",
         "progress": null,
         "stage": "diarize",
-        "started_at": "2026-10-17T04:29:56.095Z",
+        "started_at": "2026-10-17T14:59:11.409Z",
         "status": "skipped"
       },
       {
         "detail": "No word-alignment model is installed; word times come from Whisper.",
         "elapsed_seconds": 0.0,
         "eta_seconds": null,
-        "finished_at": "2026-10-17T04:29:56.095Z",
+        "finished_at": "2026-10-17T14:59:11.410Z",
         "fraction": null,
         "label": "Aligning words",
         "progress": null,
         "stage": "align",
-        "started_at": "2026-10-17T04:29:56.095Z",
+        "started_at": "2026-10-17T14:59:11.410Z",
         "status": "skipped"
       },
       {
         "detail": "No doubtful passages found.",
-        "elapsed_seconds": 0.021,
+        "elapsed_seconds": 0.033,
         "eta_seconds": null,
-        "finished_at": "2026-10-17T04:29:56.116Z",
+        "finished_at": "2026-10-17T14:59:11.443Z",
         "fraction": 0.0,
         "label": "Checking quality",
         "progress": {
@@ -218,48 +218,48 @@
           "unit": "seconds"
         },
         "stage": "quality",
-        "started_at": "2026-10-17T04:29:56.095Z",
+        "started_at": "2026-10-17T14:59:11.410Z",
         "status": "completed"
       },
       {
         "detail": "Re-checking doubtful passages runs in Maximum Accuracy mode.",
         "elapsed_seconds": 0.0,
         "eta_seconds": null,
-        "finished_at": "2026-10-17T04:29:56.117Z",
+        "finished_at": "2026-10-17T14:59:11.443Z",
         "fraction": null,
         "label": "Re-checking doubtful passages",
         "progress": null,
         "stage": "retranscribe",
-        "started_at": "2026-10-17T04:29:56.117Z",
+        "started_at": "2026-10-17T14:59:11.443Z",
         "status": "skipped"
       },
       {
         "detail": "0 passage(s) to review",
-        "elapsed_seconds": 0.0,
+        "elapsed_seconds": 0.001,
         "eta_seconds": null,
-        "finished_at": "2026-10-17T04:29:56.117Z",
+        "finished_at": "2026-10-17T14:59:11.444Z",
         "fraction": null,
         "label": "Validating transcript",
         "progress": null,
         "stage": "validate",
-        "started_at": "2026-10-17T04:29:56.117Z",
+        "started_at": "2026-10-17T14:59:11.443Z",
         "status": "completed"
       },
       {
         "detail": "2 segment(s)",
         "elapsed_seconds": 0.001,
         "eta_seconds": null,
-        "finished_at": "2026-10-17T04:29:56.118Z",
+        "finished_at": "2026-10-17T14:59:11.445Z",
         "fraction": null,
         "label": "Saving transcript",
         "progress": null,
         "stage": "finalize",
-        "started_at": "2026-10-17T04:29:56.117Z",
+        "started_at": "2026-10-17T14:59:11.444Z",
         "status": "completed"
       }
     ],
-    "started_at": "2026-10-17T04:29:52.210Z",
+    "started_at": "2026-10-17T14:58:35.278Z",
     "status": "completed",
-    "updated_at": "2026-10-17T04:29:56.119Z"
+    "updated_at": "2026-10-17T14:59:11.446Z"
   }
 }

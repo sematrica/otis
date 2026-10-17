@@ -8,12 +8,15 @@ which is enough to see whether (and when) the manager started it.
 
 from __future__ import annotations
 
+import subprocess
+import sys
 import time
 
 import pytest
 
 from verbatim_engine.errors import InvalidJobState
-from verbatim_engine.jobs.manager import MAX_AUTO_ATTEMPTS, SETTING_AUTO_RESUME, SETTING_PAUSED, JobManager
+from verbatim_engine.jobs.manager import (MAX_AUTO_ATTEMPTS, SETTING_AUTO_RESUME, SETTING_PAUSED, JobManager,
+                                          _Running)
 from verbatim_engine.jobs.options import normalize_options
 from verbatim_engine.paths import EnginePaths
 from verbatim_engine.rpc.service import EngineService
@@ -127,6 +130,22 @@ def test_a_paused_queue_starts_nothing_until_resumed(env):
     updates = [params for method, params in notes if method == "queue.updated"]
     assert updates[0]["paused"] is True and updates[-1]["paused"] is False
     assert repo.get_setting(db, SETTING_PAUSED) is False
+
+
+def test_a_finished_job_is_not_reported_as_running(env):
+    # The worker records its outcome just before it exits; the manager
+    # notices the exit a moment later.
+    paths, db, projects = env
+    job = _job(db, projects[0])
+    manager = JobManager(db, paths, lambda *_: None)
+    process = subprocess.Popen([sys.executable, "-c", ""])
+    process.wait()
+    manager._running = _Running(job, process, paths.logs_dir / "unused.log")
+    repo.mark_job_running(db, job, process.pid)
+    assert manager.queue_state()["running"]["id"] == job
+    repo.finish_job(db, job, "completed")
+    state = manager.queue_state()
+    assert state["running"] is None and state["queued"] == []
 
 
 def test_queue_state_survives_a_restart(env):

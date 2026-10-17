@@ -1,5 +1,5 @@
 {
-  "id": 33,
+  "id": 140,
   "result": {
     "method": "index",
     "query": "fellow americ",
@@ -8,22 +8,22 @@
         "end": 7.45,
         "highlights": [
           [
-            10,
-            16
+            11,
+            17
           ],
           [
-            17,
-            26
+            18,
+            27
           ]
         ],
         "in_original_only": false,
-        "project_id": "7b1da3d552d9407ab89cc40ed7ea6a95",
+        "project_id": "77d5ea44527440c7b79f576a9e89b1a8",
         "project_title": "JFK",
         "segment_id": 1,
         "speaker": null,
         "speaker_id": null,
         "start": 0.0,
-        "text": "And so my fellow Americans, ask not what your country can do for you."
+        "text": "And so, my fellow Americans, ask not what your country can do for you."
       }
     ],
     "terms": [

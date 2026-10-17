@@ -1,5 +1,5 @@
 {
-  "id": 25,
+  "id": 132,
   "result": {
     "effective": {
       "alignment": {
@@ -84,35 +84,35 @@
       "redo_summary": null,
       "undo_summary": null
     },
-    "job_id": "e76170e57a6c41c7a9aef5e1562c7313",
+    "job_id": "d58bb8dcc7dd4f2c8ae2f1e912282ff8",
     "language": "en",
     "merged_speakers": [],
-    "project_id": "7b1da3d552d9407ab89cc40ed7ea6a95",
+    "project_id": "77d5ea44527440c7b79f576a9e89b1a8",
     "revision": 1,
     "segments": [
       {
-        "avg_logprob": -0.1967093085249265,
+        "avg_logprob": -0.19330012702172802,
         "chunk_index": 0,
-        "compression_ratio": 1.3375,
+        "compression_ratio": 1.3333333333333333,
         "end": 7.45,
         "flags": [],
         "id": 1,
         "language": "en",
-        "no_speech_prob": 0.07812988013029099,
+        "no_speech_prob": 0.07620056718587875,
         "ordinal": 0,
         "original_speaker_id": null,
-        "original_text": "And so my fellow Americans, ask not what your country can do for you.",
+        "original_text": "And so, my fellow Americans, ask not what your country can do for you.",
         "review_priority": null,
         "speaker_confidence": null,
         "speaker_edited": false,
         "speaker_id": null,
         "start": 0.0,
-        "text": "And so my fellow Americans, ask not what your country can do for you.",
+        "text": "And so, my fellow Americans, ask not what your country can do for you.",
         "text_edited": false,
         "words": [
           {
             "end": 0.53,
-            "probability": 0.7568811774253845,
+            "probability": 0.7467145919799805,
             "speaker_id": null,
             "start": 0.0,
             "text": " And",
@@ -120,31 +120,31 @@
           },
           {
             "end": 0.8700000000000001,
-            "probability": 0.9911144971847534,
+            "probability": 0.988737940788269,
             "speaker_id": null,
             "start": 0.53,
-            "text": " so",
+            "text": " so,",
             "timing_source": "whisper"
           },
           {
             "end": 1.19,
-            "probability": 0.5787479877471924,
+            "probability": 0.9899661540985107,
             "speaker_id": null,
-            "start": 0.8700000000000001,
+            "start": 1.05,
             "text": " my",
             "timing_source": "whisper"
           },
           {
             "end": 1.5299999999999998,
-            "probability": 0.9948441982269287,
+            "probability": 0.9952149391174316,
             "speaker_id": null,
             "start": 1.19,
             "text": " fellow",
             "timing_source": "whisper"
           },
           {
-            "end": 2.13,
-            "probability": 0.9367003440856934,
+            "end": 2.11,
+            "probability": 0.9482717514038086,
             "speaker_id": null,
             "start": 1.5299999999999998,
             "text": " Americans,",
@@ -152,15 +152,15 @@
           },
           {
             "end": 3.71,
-            "probability": 0.9251018762588501,
+            "probability": 0.9397851824760437,
             "speaker_id": null,
-            "start": 3.29,
+            "start": 3.27,
             "text": " ask",
             "timing_source": "whisper"
           },
           {
             "end": 4.23,
-            "probability": 0.7861220836639404,
+            "probability": 0.7416313290596008,
             "speaker_id": null,
             "start": 3.71,
             "text": " not",
@@ -168,7 +168,7 @@
           },
           {
             "end": 5.53,
-            "probability": 0.9265066385269165,
+            "probability": 0.94598788022995,
             "speaker_id": null,
             "start": 4.23,
             "text": " what",
@@ -176,7 +176,7 @@
           },
           {
             "end": 5.77,
-            "probability": 0.983763575553894,
+            "probability": 0.985503077507019,
             "speaker_id": null,
             "start": 5.53,
             "text": " your",
@@ -184,7 +184,7 @@
           },
           {
             "end": 6.29,
-            "probability": 0.9942523837089539,
+            "probability": 0.993675172328949,
             "speaker_id": null,
             "start": 5.77,
             "text": " country",
@@ -192,7 +192,7 @@
           },
           {
             "end": 6.61,
-            "probability": 0.9979683756828308,
+            "probability": 0.9981708526611328,
             "speaker_id": null,
             "start": 6.29,
             "text": " can",
@@ -200,7 +200,7 @@
           },
           {
             "end": 6.85,
-            "probability": 0.9984435439109802,
+            "probability": 0.9988872408866882,
             "speaker_id": null,
             "start": 6.61,
             "text": " do",
@@ -208,7 +208,7 @@
           },
           {
             "end": 7.07,
-            "probability": 0.9964262843132019,
+            "probability": 0.9955106973648071,
             "speaker_id": null,
             "start": 6.85,
             "text": " for",
@@ -216,7 +216,7 @@
           },
           {
             "end": 7.45,
-            "probability": 0.9986674785614014,
+            "probability": 0.9986905455589294,
             "speaker_id": null,
             "start": 7.07,
             "text": " you.",
@@ -225,14 +225,14 @@
         ]
       },
       {
-        "avg_logprob": -0.1967093085249265,
+        "avg_logprob": -0.19330012702172802,
         "chunk_index": 0,
-        "compression_ratio": 1.3375,
+        "compression_ratio": 1.3333333333333333,
         "end": 10.33,
         "flags": [],
         "id": 2,
         "language": "en",
-        "no_speech_prob": 0.07812988013029099,
+        "no_speech_prob": 0.07620056718587875,
         "ordinal": 1,
         "original_speaker_id": null,
         "original_text": "Ask what you can do for your country.",
@@ -240,21 +240,21 @@
         "speaker_confidence": null,
         "speaker_edited": false,
         "speaker_id": null,
-        "start": 7.789999999999999,
+        "start": 8.03,
         "text": "Ask what you can do for your country.",
         "text_edited": false,
         "words": [
           {
             "end": 8.47,
-            "probability": 0.9678094983100891,
+            "probability": 0.9760891795158386,
             "speaker_id": null,
-            "start": 7.789999999999999,
+            "start": 8.03,
             "text": " Ask",
             "timing_source": "whisper"
           },
           {
             "end": 8.77,
-            "probability": 0.9942960143089294,
+            "probability": 0.9945105314254761,
             "speaker_id": null,
             "start": 8.47,
             "text": " what",
@@ -262,7 +262,7 @@
           },
           {
             "end": 9.07,
-            "probability": 0.9688539505004883,
+            "probability": 0.9569684863090515,
             "speaker_id": null,
             "start": 8.77,
             "text": " you",
@@ -270,7 +270,7 @@
           },
           {
             "end": 9.35,
-            "probability": 0.9972602128982544,
+            "probability": 0.9975908994674683,
             "speaker_id": null,
             "start": 9.07,
             "text": " can",
@@ -278,7 +278,7 @@
           },
           {
             "end": 9.57,
-            "probability": 0.998633086681366,
+            "probability": 0.9986636638641357,
             "speaker_id": null,
             "start": 9.35,
             "text": " do",
@@ -286,7 +286,7 @@
           },
           {
             "end": 9.79,
-            "probability": 0.9960311055183411,
+            "probability": 0.9971728324890137,
             "speaker_id": null,
             "start": 9.57,
             "text": " for",
@@ -294,7 +294,7 @@
           },
           {
             "end": 9.95,
-            "probability": 0.9969270825386047,
+            "probability": 0.9977611303329468,
             "speaker_id": null,
             "start": 9.79,
             "text": " your",
@@ -302,7 +302,7 @@
           },
           {
             "end": 10.33,
-            "probability": 0.998310923576355,
+            "probability": 0.9986234903335571,
             "speaker_id": null,
             "start": 9.95,
             "text": " country.",

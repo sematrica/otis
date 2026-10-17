@@ -1,5 +1,5 @@
 {
-  "id": 41,
+  "id": 148,
   "result": {
     "auto_resume": true,
     "paused": true,
@@ -7,13 +7,13 @@
       {
         "attempt": 0,
         "cancel_requested": false,
-        "created_at": "2026-10-17T04:29:56.170Z",
+        "created_at": "2026-10-17T14:59:11.553Z",
         "current_stage": null,
         "effective": null,
         "elapsed_seconds": null,
         "error": null,
         "finished_at": null,
-        "id": "331873bcdd30403b82e2410652874afc",
+        "id": "196636e53e1944fdb2a8e65ce13bf95f",
         "kind": "transcribe",
         "mode": "fast",
         "options": {
@@ -34,7 +34,7 @@
           },
           "vad": true
         },
-        "project_id": "c74676061c0f4384bf1494dbdafbe20a",
+        "project_id": "5dfc18c09058446baf03e3d61743bc57",
         "project_title": "Queued second",
         "queue_position": 1,
         "stages": [
@@ -173,18 +173,18 @@
         ],
         "started_at": null,
         "status": "queued",
-        "updated_at": "2026-10-17T04:29:56.170Z"
+        "updated_at": "2026-10-17T14:59:11.553Z"
       },
       {
         "attempt": 0,
         "cancel_requested": false,
-        "created_at": "2026-10-17T04:29:56.161Z",
+        "created_at": "2026-10-17T14:59:11.546Z",
         "current_stage": null,
         "effective": null,
         "elapsed_seconds": null,
         "error": null,
         "finished_at": null,
-        "id": "8e49cf7a09c34862a944841911a60741",
+        "id": "94c362b5b48a4b009a6232183c2b85de",
         "kind": "transcribe",
         "mode": "fast",
         "options": {
@@ -205,7 +205,7 @@
           },
           "vad": true
         },
-        "project_id": "b6ff2df759ca461ab648fb53acabceb9",
+        "project_id": "1b85f4fcd8164465a7109c6cf1eb67f4",
         "project_title": "Queued first",
         "queue_position": 2,
         "stages": [
@@ -344,270 +344,9 @@
         ],
         "started_at": null,
         "status": "queued",
-        "updated_at": "2026-10-17T04:29:56.161Z"
+        "updated_at": "2026-10-17T14:59:11.546Z"
       }
     ],
-    "running": {
-      "attempt": 1,
-      "cancel_requested": false,
-      "created_at": "2026-10-17T04:29:52.208Z",
-      "current_stage": "finalize",
-      "effective": {
-        "alignment": {
-          "enabled": false,
-          "reason": "No word-alignment model is installed; word times come from Whisper."
-        },
-        "backend": "faster-whisper",
-        "chunk_seconds": 600.0,
-        "chunking": {
-          "chunks": 1,
-          "pad_seconds": 1.0,
-          "target_seconds": 600.0
-        },
-        "decode": {
-          "beam_size": 5,
-          "best_of": 5,
-          "compression_ratio_threshold": 2.4,
-          "condition_on_previous_text": true,
-          "hallucination_silence_threshold": null,
-          "log_prob_threshold": -1.0,
-          "no_speech_threshold": 0.6,
-          "patience": 1.0,
-          "temperatures": [
-            0.0,
-            0.2,
-            0.4,
-            0.6,
-            0.8,
-            1.0
-          ],
-          "vad": "silero (built-in)",
-          "word_timestamps": true
-        },
-        "diarization": {
-          "enabled": false,
-          "reason": "The speaker identification model is not installed."
-        },
-        "load": {
-          "compute_type": "int8",
-          "cpu_threads": 4,
-          "device": "cpu",
-          "random_seed": 0
-        },
-        "mode": "balanced",
-        "model": {
-          "display_name": "Custom model (small-int8)",
-          "id": null,
-          "path": "/Users/example/Models/faster-whisper-small",
-          "revision": null
-        },
-        "quality": {
-          "flags": {},
-          "speech_detectors": [
-            "silero-vad"
-          ]
-        },
-        "recheck": {
-          "enabled": false,
-          "reason": "Re-checking doubtful passages runs in Maximum Accuracy mode."
-        },
-        "validation": {
-          "missing_speech": 0,
-          "needs_review": 0,
-          "possible_duplicates": 0,
-          "review": {
-            "high": 0,
-            "low": 0,
-            "medium": 0
-          },
-          "segments": 2,
-          "timing_fixes": 0,
-          "untranscribed": [],
-          "untranscribed_seconds": 0,
-          "words_out_of_order": 0
-        },
-        "warnings": []
-      },
-      "elapsed_seconds": 3.909,
-      "error": null,
-      "finished_at": "2026-10-17T04:29:56.119Z",
-      "id": "e76170e57a6c41c7a9aef5e1562c7313",
-      "kind": "transcribe",
-      "mode": "balanced",
-      "options": {
-        "align": "auto",
-        "alignment_model": null,
-        "backend": "faster-whisper",
-        "chunk_seconds": 600.0,
-        "diarize": "auto",
-        "language": null,
-        "mode": "balanced",
-        "model_id": null,
-        "model_path": "/Users/example/Models/faster-whisper-small",
-        "recheck": "auto",
-        "speakers": {
-          "max": null,
-          "min": null,
-          "num": null
-        },
-        "vad": true
-      },
-      "project_id": "7b1da3d552d9407ab89cc40ed7ea6a95",
-      "project_title": "JFK",
-      "queue_position": null,
-      "stages": [
-        {
-          "detail": null,
-          "elapsed_seconds": 0.001,
-          "eta_seconds": null,
-          "finished_at": "2026-10-17T04:29:52.350Z",
-          "fraction": null,
-          "label": "Checking source",
-          "progress": null,
-          "stage": "prepare",
-          "started_at": "2026-10-17T04:29:52.349Z",
-          "status": "completed"
-        },
-        {
-          "detail": null,
-          "elapsed_seconds": 0.054,
-          "eta_seconds": null,
-          "finished_at": "2026-10-17T04:29:52.404Z",
-          "fraction": 1.0,
-          "label": "Extracting audio",
-          "progress": {
-            "done": 11.0,
-            "total": 11.0,
-            "unit": "seconds"
-          },
-          "stage": "extract",
-          "started_at": "2026-10-17T04:29:52.350Z",
-          "status": "completed"
-        },
-        {
-          "detail": "1 chunk(s)",
-          "elapsed_seconds": 0.0,
-          "eta_seconds": null,
-          "finished_at": "2026-10-17T04:29:52.404Z",
-          "fraction": 1.0,
-          "label": "Analyzing audio",
-          "progress": {
-            "done": 11.0,
-            "total": 11.0,
-            "unit": "seconds"
-          },
-          "stage": "analyze",
-          "started_at": "2026-10-17T04:29:52.404Z",
-          "status": "completed"
-        },
-        {
-          "detail": "Custom model (small-int8) on faster-whisper (CPU)",
-          "elapsed_seconds": 0.397,
-          "eta_seconds": null,
-          "finished_at": "2026-10-17T04:29:52.801Z",
-          "fraction": null,
-          "label": "Loading model",
-          "progress": null,
-          "stage": "load_model",
-          "started_at": "2026-10-17T04:29:52.404Z",
-          "status": "completed"
-        },
-        {
-          "detail": "1 of 1 chunk(s) done",
-          "elapsed_seconds": 3.293,
-          "eta_seconds": null,
-          "finished_at": "2026-10-17T04:29:56.094Z",
-          "fraction": 1.0,
-          "label": "Transcribing",
-          "progress": {
-            "done": 11.0,
-            "total": 11.0,
-            "unit": "seconds"
-          },
-          "stage": "transcribe",
-          "started_at": "2026-10-17T04:29:52.801Z",
-          "status": "completed"
-        },
-        {
-          "detail": "The speaker identification model is not installed.",
-          "elapsed_seconds": 0.0,
-          "eta_seconds": null,
-          "finished_at": "2026-10-17T04:29:56.095Z",
-          "fraction": null,
-          "label": "Identifying speakers",
-          "progress": null,
-          "stage": "diarize",
-          "started_at": "2026-10-17T04:29:56.095Z",
-          "status": "skipped"
-        },
-        {
-          "detail": "No word-alignment model is installed; word times come from Whisper.",
-          "elapsed_seconds": 0.0,
-          "eta_seconds": null,
-          "finished_at": "2026-10-17T04:29:56.095Z",
-          "fraction": null,
-          "label": "Aligning words",
-          "progress": null,
-          "stage": "align",
-          "started_at": "2026-10-17T04:29:56.095Z",
-          "status": "skipped"
-        },
-        {
-          "detail": "No doubtful passages found.",
-          "elapsed_seconds": 0.021,
-          "eta_seconds": null,
-          "finished_at": "2026-10-17T04:29:56.116Z",
-          "fraction": 0.0,
-          "label": "Checking quality",
-          "progress": {
-            "done": 0.0,
-            "total": 11.0,
-            "unit": "seconds"
-          },
-          "stage": "quality",
-          "started_at": "2026-10-17T04:29:56.095Z",
-          "status": "completed"
-        },
-        {
-          "detail": "Re-checking doubtful passages runs in Maximum Accuracy mode.",
-          "elapsed_seconds": 0.0,
-          "eta_seconds": null,
-          "finished_at": "2026-10-17T04:29:56.117Z",
-          "fraction": null,
-          "label": "Re-checking doubtful passages",
-          "progress": null,
-          "stage": "retranscribe",
-          "started_at": "2026-10-17T04:29:56.117Z",
-          "status": "skipped"
-        },
-        {
-          "detail": "0 passage(s) to review",
-          "elapsed_seconds": 0.0,
-          "eta_seconds": null,
-          "finished_at": "2026-10-17T04:29:56.117Z",
-          "fraction": null,
-          "label": "Validating transcript",
-          "progress": null,
-          "stage": "validate",
-          "started_at": "2026-10-17T04:29:56.117Z",
-          "status": "completed"
-        },
-        {
-          "detail": "2 segment(s)",
-          "elapsed_seconds": 0.001,
-          "eta_seconds": null,
-          "finished_at": "2026-10-17T04:29:56.118Z",
-          "fraction": null,
-          "label": "Saving transcript",
-          "progress": null,
-          "stage": "finalize",
-          "started_at": "2026-10-17T04:29:56.117Z",
-          "status": "completed"
-        }
-      ],
-      "started_at": "2026-10-17T04:29:52.210Z",
-      "status": "completed",
-      "updated_at": "2026-10-17T04:29:56.119Z"
-    }
+    "running": null
   }
 }
