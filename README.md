@@ -4,34 +4,38 @@ Accurate, local transcription of videos and podcasts for macOS on Apple
 Silicon. A native SwiftUI app drives a Python engine that runs Whisper
 (faster-whisper on the CPU, or MLX on the Apple GPU) entirely on your Mac.
 
-**Status: Stage 3 (Verification and accuracy).** Everything from Stages 1–2
-(local media import, real Whisper transcription, persistent jobs with
-cancel/resume/crash recovery, speakers, word alignment, the three-panel
-workspace, corrections with undo/redo, TXT export) plus:
+**Status: Stage 4 (Media import, search, exports, queue).** Everything from
+Stages 1–3 (local media import, real Whisper transcription, persistent jobs
+with cancel/resume/crash recovery, speakers, word alignment, the three-panel
+workspace, corrections with undo/redo, quality analysis, acoustic re-checking
+of doubtful passages, validation, optional AI review) plus:
 
-* **Quality analysis on every transcript** — unclear speech, possible
-  hallucinations, repetitions and speech that no word covers are flagged with a
-  severity; the Review menu lists the passages that need a look, most severe
-  first, and uncertain words are coloured.
-* **Maximum Accuracy re-checks doubtful passages** — they are transcribed again
-  from the original recording with context and other settings, and the
-  wordings are compared by acoustic evidence (an independent CTC model scores
-  each wording against the audio). A wording replaces the first pass only with
-  a clear margin; close calls are kept as alternatives for you to choose; words
-  are never removed automatically. Any passage can also be re-checked on demand.
-* **Validation** — timestamps, word order, duplicates and untranscribed speech
-  are checked on the final transcript; unresolved doubts stay visible.
-* **Optional AI review** — a local model (Ollama) or, with your explicit
-  permission, OpenAI can flag suspicious passages, suggest punctuation, point
-  out inconsistent spellings and suggest passages to re-check. Nothing changes
-  until you accept a suggestion; every request and answer is recorded, and the
-  OpenAI key stays in the Keychain.
-* **Accuracy benchmark** — `engine/scripts/benchmark_accuracy.py` measures WER,
-  CER, DER, word-time error and flag quality on a reproducible corpus (real and
-  synthetic speech), with and without re-checking; CI runs it.
+* **Authorized YouTube import** — paste a link of a video you may download
+  (your own, licensed for reuse, or with the rights holder's permission).
+  Verbatim shows the title, channel, licence, length and published captions,
+  asks you to confirm, retrieves the audio (and video up to 720p, if you want
+  it), then transcribes it like a local file. It never signs in, uses no
+  cookies and does not bypass DRM or restrictions; when YouTube refuses, it
+  says why, and you can import a file instead. Ads YouTube inserts during
+  playback are not part of the retrieved file and are not transcribed;
+  sponsor messages inside the video are, and passages in sponsor chapters
+  are labelled.
+* **Published captions** are kept alongside the transcript as their own
+  source (exportable as SRT/VTT) and compared with it: passages where they
+  clearly differ are flagged for you to listen to. They never replace
+  transcribed words.
+* **Full-text search** across all transcripts (library) or in the open one
+  (⌘F): words match as prefixes, "quoted phrases" match exactly, results
+  jump to the passage.
+* **Every export format** — TXT, SRT, WebVTT, JSON (metadata, speaker IDs and
+  names, segment and word times, corrected and original transcript,
+  uncertainty flags), CSV (per passage or per word) and Markdown.
+* **Persistent processing queue** — reorder waiting jobs, pause after the
+  current job or immediately (it resumes where it stopped), and interrupted
+  work is resumed when Verbatim starts again.
 
-YouTube import, the other export formats and search are later stages; see
-`docs/ARCHITECTURE.md` and `docs/STAGE3_REPORT.md`.
+Production hardening (notarization, updates, bundle size) is Stage 5; see
+`docs/ARCHITECTURE.md` and `docs/STAGE4_REPORT.md`.
 
 ## Requirements
 
@@ -72,6 +76,7 @@ uv run verbatim-engine download-model mlx/large-v3-turbo       # explicit downlo
 uv run verbatim-engine download-model diarization/pyannote-wespeaker
 uv run verbatim-engine download-model alignment/en-conformer-small
 uv run verbatim-engine transcribe ~/talk.mp4 --mode maximum --num-speakers 2 -o talk.txt
+uv run verbatim-engine transcribe ~/talk.mp4 --format srt -o talk.srt          # txt srt vtt json csv md
 ```
 
 ## Tests
@@ -90,6 +95,9 @@ uv run python scripts/evaluate_speaker_review.py --whisper … --diarization …
 uv run python scripts/benchmark_accuracy.py --whisper … --diarization … --alignment … \
     --speaker-corpus /tmp/speakers --interrupted --markdown results.md   # Stage 3 accuracy benchmark
 VERBATIM_TEST_OLLAMA_MODEL=qwen2.5:0.5b uv run pytest tests/test_stage3_llm.py   # AI review, local Ollama
+VERBATIM_TEST_MODEL_DIR=… VERBATIM_TEST_YOUTUBE_URL=https://www.youtube.com/watch?v=… \
+    uv run pytest tests/test_stage4_models.py -k real_youtube -s   # YouTube itself (media only if CC or
+                                                                   # VERBATIM_TEST_YOUTUBE_AUTHORIZED=1)
 cd ../app && swift test                                        # macOS only
 ```
 
@@ -103,8 +111,8 @@ macOS runner, builds the app bundle and smoke-tests it.
 
 ```
 app/       Swift package: VerbatimCore (engine client, protocol types) and the SwiftUI app
-engine/    Python engine: media, audio, ASR, diarization, alignment, verification, AI review, transcript corrections, jobs, storage, RPC, CLI
+engine/    Python engine: media, YouTube import, audio, ASR, diarization, alignment, verification, AI review, transcript corrections, search, exports, jobs and queue, storage, RPC, CLI
 shared/    protocol fixtures captured from a real engine run (decoded by Swift tests)
 scripts/   build_app.sh, smoke_test_app.sh, app_self_test.sh, dev_run.sh, verify_model_catalog.py
-docs/      ARCHITECTURE.md, ENGINE_PROTOCOL.md, STAGE1_REPORT.md … STAGE3_REPORT.md (results and limitations)
+docs/      ARCHITECTURE.md, ENGINE_PROTOCOL.md, STAGE1_REPORT.md … STAGE4_REPORT.md (results and limitations)
 ```

@@ -1,9 +1,10 @@
 # Verbatim — Architecture
 
-Status: **Stage 2 (Speaker Intelligence)** on top of Stage 1 (Foundation).
-This document records the selected libraries, their verified compatibility,
-model requirements, and known risks. Anything not yet verified is marked as
-such. Measured results are in `docs/STAGE1_REPORT.md` and `docs/STAGE2_REPORT.md`.
+Status: **Stage 4 (Media Import, Search, Exports, Queue)** on top of Stages
+1–3 (Foundation, Speaker Intelligence, Accuracy Verification). This document
+records the selected libraries, their verified compatibility, model
+requirements, and known risks. Anything not yet verified is marked as such.
+Measured results are in `docs/STAGE1_REPORT.md` … `docs/STAGE4_REPORT.md`.
 
 ## 1. Goals that drive the design
 
@@ -27,11 +28,14 @@ such. Measured results are in `docs/STAGE1_REPORT.md` and `docs/STAGE2_REPORT.md
                       │                              speakers · original transcripts · edit history
                       ├─ Model Manager             catalog, explicit downloads, deletion, storage location
                       ├─ Transcript Editor         corrections with undo/redo (engine side)
-                      ├─ Export Manager            TXT with speaker turns
-                      └─ Job Manager ──spawns──▶ verbatim-engine worker --job <id>   (one at a time)
-                                                   extract → plan → load model → transcribe chunks →
-                                                   (unload Whisper) → diarize → align → finalize
-                                                   (exits after each job, releasing all model memory)
+                      ├─ Export Manager            TXT, SRT, WebVTT, JSON, CSV, Markdown
+                      ├─ Search                    SQLite FTS5 index kept in step by triggers
+                      └─ Job Manager (persistent queue: order, pause, auto-resume)
+                           └─spawns──▶ verbatim-engine worker --job <id>   (one at a time)
+                                         [download (YouTube)] → extract → plan → load model →
+                                         transcribe chunks → (unload Whisper) → diarize → align →
+                                         quality → re-check → validate → finalize
+                                         (exits after each job, releasing all model memory)
 ```
 
 Why a separate worker process per job:
@@ -54,16 +58,16 @@ timeout; writes are short transactions.
 
 | # | Component | Stage | Location |
 |---|-----------|-------|----------|
-| 1 | Media Import Manager | 1 | `engine/src/verbatim_engine/media/` (probe + validation), `app/Sources/Verbatim/Views/LibraryView.swift` |
+| 1 | Media Import Manager | 1 / 4 | `engine/src/verbatim_engine/media/` (probe + validation), `youtube/` (URL validation, yt-dlp retrieval, captions), `app/Sources/Verbatim/Views/LibraryView.swift`, `YouTubeImport.swift` |
 | 2 | Audio Processing Engine | 1 | `engine/src/verbatim_engine/audio/` (decode → 16 kHz mono WAV, chunk planner, WAV reader, level normalisation) |
 | 3 | Speech Recognition Engine | 1 | `engine/src/verbatim_engine/asr/` (backend protocol, faster-whisper, mlx-whisper, merge) |
 | 4 | Speaker Diarization Engine | 2 | `engine/src/verbatim_engine/diarization/` (segmentation, embeddings, clustering, timeline, word/segment assignment) |
 | 5 | Word Alignment Engine | 2 | `engine/src/verbatim_engine/alignment/` (CTC models, Viterbi, aligner, boundary refinement) |
 | 6 | Transcript Verification Engine | 3 | `engine/src/verbatim_engine/verify/` (quality analysis, re-transcription, acoustic comparison, validation, review priority), `alignment/score.py` (CTC forward scoring), `llm/` (optional AI review: providers, prompts, validation, runs) |
-| 7 | Transcript Editor | 2 | `engine/src/verbatim_engine/transcript/` (data model, build, corrections + undo) and `app/Sources/Verbatim/Workspace/` |
-| 8 | Export Manager | 1 (TXT) / 4 | `engine/src/verbatim_engine/export/` |
+| 7 | Transcript Editor | 2 / 4 | `engine/src/verbatim_engine/transcript/` (data model, build, corrections + undo), `search.py` (full-text search), `app/Sources/Verbatim/Workspace/`, `Views/SearchView.swift` |
+| 8 | Export Manager | 1 (TXT) / 4 | `engine/src/verbatim_engine/export/` (TXT, SRT, VTT, JSON, CSV, Markdown) |
 | 9 | Model Manager | 1–2 / 5 | `engine/src/verbatim_engine/models/` (HuggingFace and pinned-URL downloads) |
-| 10 | Persistent Job Manager | 1 | `engine/src/verbatim_engine/jobs/` |
+| 10 | Persistent Job Manager | 1 / 4 | `engine/src/verbatim_engine/jobs/` (queue order, pause, auto-resume), `Views/ProcessingView.swift` |
 
 ## 4. Selected libraries and verified compatibility
 
@@ -81,7 +85,7 @@ the GitHub-hosted macOS runner because the dev container cannot reach them.
 | VAD | Silero VAD v6 via faster-whisper | bundled | Reduces hallucinated text in silence; used directly by faster-whisper and as `clip_timestamps` for mlx-whisper | Linux |
 | ONNX runtime | onnxruntime | `>=1.17,<1.24` | needed by Silero VAD; 1.24+ is macOS 14+ only | Linux |
 | Model download | huggingface_hub | `>=0.23` | explicit `snapshot_download` into a plain directory; `local_files_only` when loading | CI |
-| Storage | SQLite (Python `sqlite3`) | system | WAL, foreign keys, migrations; FTS5 planned for Stage 4 | Linux + CI |
+| Storage | SQLite (Python `sqlite3`) | system | WAL, foreign keys, migrations (schema 6); FTS5 full-text index (`unicode61 remove_diacritics 2`) | Linux + CI |
 | Diarization | pyannote segmentation-3.0 + WeSpeaker ResNet34 (the models of pyannote's `speaker-diarization-3.1`), as ONNX exports, run on onnxruntime; pipeline re-implemented in NumPy/SciPy | pinned SHA-256 | Same models and algorithm as pyannote 3.1 without PyTorch (excluded from the bundle) and without gated HuggingFace downloads | Linux + CI (DER measured) |
 | Clustering | SciPy (`linkage`, `linear_sum_assignment`) | `scipy>=1.13` | centroid-linkage agglomerative clustering; already in the bundle via mlx-whisper | Linux + CI |
 | Speaker features | kaldi-native-fbank | `>=1.20` | Kaldi-compatible filterbanks (WeSpeaker and NeMo inputs), Apache-2.0 | Linux + CI |
@@ -89,7 +93,8 @@ the GitHub-hosted macOS runner because the dev container cannot reach them.
 | Alignment (multilingual) | Meta MMS-300M forced aligner (ONNX) | HF file, size-verified | 1,100+ languages; most precise measured (~18 ms); **CC BY-NC 4.0** | CI only (HF unreachable from the dev container) |
 | Romanisation | uroman | `>=1.3` | non-Latin scripts → Latin letters for MMS (Apache-2.0) | Linux |
 | CTC alignment | own NumPy Viterbi | — | `torchaudio.functional.forced_align` is deprecated and needs PyTorch | Linux + CI |
-| YouTube (Stage 4) | yt-dlp | TBD | authorized content only; captions when available | not yet |
+| Video retrieval | **yt-dlp** (Python API, in-process) | `yt-dlp==2026.8.19` | authorized content only; metadata, formats, captions; no cookies, sign-in, geo bypass or DRM formats | Linux (real yt-dlp against a local page); YouTube itself: CI attempt, see the Stage 4 report |
+| YouTube player challenges | **yt-dlp-ejs** + **deno** | `yt-dlp-ejs==0.8.0`, `deno==2.9.7` (PyPI wheel with the deno binary) | YouTube's formats need its player JavaScript solved; yt-dlp runs the pinned EJS scripts in deno (`remote_components` empty: no scripts fetched at run time) | Linux (deno runs), macOS bundle check |
 
 Python runtime: CPython 3.12 (python-build-standalone, relocatable) embedded in
 the app bundle by `scripts/build_app.sh`.
@@ -261,6 +266,47 @@ has a real numerator and denominator; otherwise the UI shows an indeterminate
 state with elapsed time. ETA is derived from the measured processing rate and is
 shown only after enough work has been observed.
 
+### Stage 4: video import, search, exports and the queue
+
+* **Video import** (`youtube/`). `urls.validate` accepts one YouTube video and
+  turns it into the canonical watch URL before any network access.
+  `youtube.inspect` reads the metadata (title, channel, licence, duration,
+  chapters, caption tracks, sizes) and says when a video cannot be imported
+  (live, needs an account, DRM). The user must confirm they are authorized
+  (`projects.createFromYouTube` refuses otherwise; the confirmation and its
+  wording are stored with the project). The `youtube` job's first stage
+  retrieves AAC audio and, if wanted, H.264 video up to 720p, joins them
+  without re-encoding (PyAV remux), and continues partial downloads after an
+  interruption; then the normal pipeline runs on the file. A local file is
+  always the fallback: anything that cannot be retrieved can be imported.
+* **Captions** are a separate source: stored as published (`captions` table),
+  exportable as SRT/VTT, and compared with the transcript after it is made.
+  Where they differ clearly (word-sequence agreement < 0.6 over passages of
+  at least 3 words) the passage gets a low `captions_differ` flag that shows
+  the caption wording. Captions never replace or fill in transcript words:
+  automatic captions come from another recogniser, creators' captions are
+  often condensed.
+* **Advertisements.** Ads YouTube inserts during playback are not in the
+  retrieved media and are not transcribed (the app says so before import).
+  Sponsor messages inside the video are speech in the media and are
+  transcribed; passages inside chapters the creator titled as sponsor or ad
+  segments get an informational `in_sponsor_chapter` flag. Verbatim does not
+  detect unmarked sponsor messages and does not claim to.
+* **Search** (`search.py`, schema 4): FTS5 external-content table over
+  segment text, kept in step by triggers; the user's text is tokenised and
+  quoted by the engine (never FTS5 syntax), words match as prefixes;
+  languages without spaces fall back to substring search. The app searches
+  the library or the open transcript (⌘F), highlights matches and jumps to
+  the passage.
+* **Exports** (`export/`): subtitle cues are cut from word times; the JSON
+  export carries metadata, speakers, segments, words, flags and the
+  original AI transcript; CSV is defused against formula injection.
+* **Persistent queue** (schema 5): `queue_position` orders queued jobs; the
+  paused state and auto-resume setting are stored, so the queue survives a
+  restart. Pausing can let the current job finish or interrupt it (it keeps
+  its progress and goes back to the front). Interrupted jobs are queued again
+  at startup when auto-resume is on (at most 5 automatic attempts per job).
+
 ## 6. Processing modes
 
 | Mode | Model | Decoding | Speakers / words |
@@ -317,6 +363,12 @@ model loading always uses local files only. The storage folder is configurable
 * All working files live under the app's data directory
   (`~/Library/Application Support/Verbatim`), per job, and are removed with the
   project.
+* Video import connects to YouTube only when the user asks, after they
+  confirm they are authorized to retrieve the video. yt-dlp runs with no
+  cookies, no account, no `.netrc`, no geo bypass, no unplayable or DRM
+  formats, only the YouTube extractor, and no scripts fetched at run time;
+  URLs are validated and canonicalised first. Retrieved media lives in
+  `<data dir>/media/<project id>/` and is removed with the project.
 * AI review is optional and off until configured. Nothing is sent to a cloud
   service without explicit authorization: the OpenAI provider is disabled until
   the user allows it in Settings, and every review of a project with a remote
@@ -358,9 +410,16 @@ model loading always uses local files only. The storage folder is configurable
    non-commercial; the permissive ones are English-only. Without an installed
    aligner for the language, word times come from Whisper and the job records
    why. Boundary refinement parameters were fitted on synthetic speech.
-9. **YouTube (Stage 4)**: yt-dlp breaks when YouTube changes; current yt-dlp needs
-   an external JavaScript runtime for YouTube; terms of service restrict use to
-   content the user is authorized to download. No DRM or authentication bypass.
+9. **YouTube**: yt-dlp breaks when YouTube changes, and pinned versions age
+   quickly (updating yt-dlp is a Stage 5 maintenance concern). YouTube often
+   asks data-centre and some home addresses to sign in ("not a bot"); Verbatim
+   never signs in, so such requests fail with `youtube_blocked` and the user
+   imports a file instead. Retrieval from YouTube itself could not be tested
+   from the development container (no route to YouTube); CI attempts it
+   without blocking the build. Use is limited to content the user is
+   authorized to download; the confirmation is the user's, Verbatim cannot
+   verify it. The bundled deno adds about 90–100 MB, and its JIT will need the
+   matching hardened-runtime entitlement for notarization (Stage 5).
 10. **Code signing & notarization (Stage 5)**: every embedded `.so`/`.dylib` must be
     signed with the hardened runtime; numba/llvmlite and MLX may need JIT-related
     entitlements. The Stage 1 bundle is ad-hoc signed and not notarized.

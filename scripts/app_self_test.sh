@@ -2,18 +2,23 @@
 # Run the packaged app's built-in self-test: import MEDIA, transcribe it with
 # the real model in MODEL_DIR through the app's own model layer, open the
 # transcript workspace, snapshot the window, and quit.
-#   scripts/app_self_test.sh build/Verbatim.app MEDIA MODEL_DIR BACKEND EXPECTED_PHRASE [SPEAKERS]
+#   scripts/app_self_test.sh build/Verbatim.app MEDIA MODEL_DIR BACKEND EXPECTED_PHRASE [SPEAKERS] [PAGE]
 # With SPEAKERS=N the speaker identification and alignment models must be
 # installed in the app's models folder; the job runs in Maximum Accuracy mode,
 # N speakers are expected, a speaker is renamed and the rename undone, and two
-# passages are re-checked on demand.
+# passages are re-checked on demand. With PAGE (http://127.0.0.1:PORT/...: a
+# local page with the same speech and a caption track), every export format,
+# search and the queue are checked, and the page is imported through the
+# bundled yt-dlp and transcribed.
 set -euo pipefail
-APP="$1"; MEDIA="$2"; MODEL_DIR="$3"; BACKEND="$4"; EXPECTED="$5"; SPEAKERS="${6:-0}"
+APP="$1"; MEDIA="$2"; MODEL_DIR="$3"; BACKEND="$4"; EXPECTED="$5"; SPEAKERS="${6:-0}"; PAGE="${7:-}"
+PAGE_HOST="$(sed -E 's#^https?://([^/]+).*#\1#' <<<"$PAGE")"
 OUT="$(mktemp -d)"
 echo "==> Self-test ($BACKEND) on $(basename "$MEDIA")"
 VERBATIM_SELF_TEST_MEDIA="$MEDIA" VERBATIM_SELF_TEST_MODEL_DIR="$MODEL_DIR" \
 VERBATIM_SELF_TEST_BACKEND="$BACKEND" VERBATIM_SELF_TEST_OUTPUT="$OUT" \
 VERBATIM_SELF_TEST_SPEAKERS="$([[ "$SPEAKERS" != 0 ]] && echo 1 || echo 0)" \
+VERBATIM_SELF_TEST_PAGE="$PAGE" VERBATIM_TEST_MEDIA_HOST="$PAGE_HOST" \
     "$APP/Contents/MacOS/Verbatim" > "$OUT/app.log" 2>&1 &
 app_pid=$!
 for _ in $(seq 1 720); do
@@ -61,10 +66,11 @@ PY
     exit 1
 fi
 cat "$OUT/result.json"
-python3 - "$OUT/result.json" "$EXPECTED" "$SPEAKERS" <<'PY'
+python3 - "$OUT/result.json" "$EXPECTED" "$SPEAKERS" "$PAGE" <<'PY'
 import json, sys
 result = json.load(open(sys.argv[1]))
 speakers = int(sys.argv[3])
+page = sys.argv[4]
 assert result["status"] == "completed", result
 assert sys.argv[2].lower() in result["text"].lower(), result["text"]
 # skipped when their models are not installed; re-checking runs only in Maximum Accuracy
@@ -79,6 +85,16 @@ if speakers:
     assert result["renamed"] == "Diane" and result["after_undo"] == "Speaker 1" and result["can_redo"], result
     assert result["recheck_stages"] == ["prepare:completed", "retranscribe:completed", "finalize:completed"], result
     assert result["rechecked"] == 2 and result["recheck_summary"].startswith("Re-check 2 passages"), result
+if page:
+    assert set(result["exports"]) == {"txt", "srt", "vtt", "json", "csv", "md"}, result["exports"]
+    assert all(size > 0 for size in result["exports"].values()), result["exports"]
+    assert result["search"]["hits"] >= 1 and result["queue_paused"] is False, result
+    imported = result["import"]
+    assert imported["stages"][0] == "download:completed" and imported["has_media"], imported
+    assert all(s.split(":")[1] in ("completed", "skipped") for s in imported["stages"]), imported
+    assert imported["captions"] == ["manual"], imported
+    assert sys.argv[2].lower() in imported["text"].lower(), imported
+    print("stage 4 checks passed: exports", result["exports"], "search", result["search"])
 print("self-test passed:", result["segments"], "segment(s), language", result["language"],
       "speakers", result.get("speakers"), "aligned words", result.get("aligned_words"), "/", result.get("words"))
 PY

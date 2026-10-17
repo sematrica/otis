@@ -98,7 +98,8 @@ final class AppModel: ObservableObject {
             return
         }
         do {
-            engineInfo = try await client.start(EngineLocator.configuration(python: python))
+            engineInfo = try await client.start(EngineLocator.configuration(python: python,
+                                                                            extraEnvironment: SelfTest.engineEnvironment()))
             engineState = .ready
             listenForNotifications()
             await refreshAll()

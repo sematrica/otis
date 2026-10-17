@@ -189,10 +189,23 @@ jobs:
           from pathlib import Path
           from tests.conftest import encode_media, read_wav
           encode_media(Path('$RUNNER_TEMP/jfk-video.mp4'), read_wav(Path('tests/corpus/jfk.wav')), video=True)"
-      - name: App self-test, faster-whisper (import → transcribe → workspace → quit)
+      - name: Serve a local video page with captions (for the import self-test)
+        working-directory: engine
+        run: |
+          site="$RUNNER_TEMP/site"; mkdir -p "$site"
+          cp tests/corpus/jfk.wav "$site/talk.wav"
+          uv run python -c "
+          from pathlib import Path
+          from tests.test_stage4_youtube import CREATOR_VTT
+          Path('$site/talk.en.vtt').write_text(CREATOR_VTT)"
+          echo '<html><head><title>JFK talk</title></head><body><audio controls src="talk.wav"><track kind="captions" src="talk.en.vtt" srclang="en" label="English"></audio></body></html>' > "$site/index.html"
+          nohup python3 -m http.server 8765 --bind 127.0.0.1 --directory "$site" > "$RUNNER_TEMP/site.log" 2>&1 &
+          for _ in $(seq 1 50); do curl -fsS http://127.0.0.1:8765/index.html >/dev/null && break; sleep 0.2; done
+      - name: App self-test, faster-whisper (import → transcribe → workspace → exports, search, queue, page import → quit)
         run: >-
           scripts/app_self_test.sh build/Verbatim.app "$RUNNER_TEMP/jfk-video.mp4"
-          "$RUNNER_TEMP/vdata/models/faster-whisper/small" faster-whisper "fellow Americans"
+          "$RUNNER_TEMP/vdata/models/faster-whisper/small" faster-whisper "fellow Americans" 0
+          http://127.0.0.1:8765/index.html
       - name: App self-test, MLX
         run: >-
           scripts/app_self_test.sh build/Verbatim.app "$RUNNER_TEMP/jfk-video.mp4"

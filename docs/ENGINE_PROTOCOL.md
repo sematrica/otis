@@ -1,4 +1,4 @@
-# Engine protocol (version 3)
+# Engine protocol (version 4)
 
 The app launches `verbatim-engine serve` (the embedded Python) and talks to it
 over the child's stdin/stdout. Real captured messages for every shape below are
@@ -29,6 +29,10 @@ interrupted (resumable), never silently lost.
 | `engine.shutdown` | — | `{ok}`; the engine exits after replying |
 | `media.probe` | `path` (absolute) | media info: format, duration, audio/video streams |
 | `projects.create` | `path`, `title?` | project (validates and probes the file first) |
+| `youtube.inspect` | `url` | what a link points to, before anything is downloaded (below); `invalid_params` (data `reason: url`) for anything but one YouTube video |
+| `projects.createFromYouTube` | `url`, `authorized` (must be `true`), `options`, `media?` (`video` default, or `audio`), `captions?[{language, kind}]`, `title?` | `{project, job}`: the project (no media yet) and its queued `youtube` job. Refused without `authorized: true` (`invalid_params`, data `reason: authorization`), when the model is missing, or with the inspection's refusal code |
+| `captions.list` | `project_id`, `include_cues?` | `{captions: [{id, project_id, language, name, kind (manual / auto), source, fetched_at, cue_count, cues?[{start, end, text}]}]}`: caption tracks as published, kept apart from the transcript |
+| `captions.export` | `project_id`, `caption_id`, `format` (`srt` / `vtt`), `path?` | `{content, suggested_filename}`, or `{path, bytes}` with `path` |
 | `projects.list` | `status?`, `limit?` | `{projects: [project]}` newest first |
 | `projects.get` | `project_id` | project |
 | `projects.rename` | `project_id`, `title` | project |
@@ -39,6 +43,11 @@ interrupted (resumable), never silently lost.
 | `jobs.cancel` / `jobs.resume` | `job_id` | job |
 | `jobs.get` | `job_id` | job |
 | `jobs.list` | `active_only?`, `project_id?`, `limit?` | `{jobs: [job]}` |
+| `queue.get` | — | queue state: `{paused, auto_resume, running: job \| null, queued: [job]}` in the order they will run |
+| `queue.pause` | `interrupt?` | queue state. No further job starts; with `interrupt`, the running job also stops now, keeps its progress and is queued again at the front |
+| `queue.resume` | — | queue state |
+| `queue.reorder` | `job_ids[]` (exactly the queued jobs, in the new order) | queue state; `invalid_job_state` if the list is not the queued set |
+| `queue.setAutoResume` | `enabled` | queue state. When on (default), work interrupted by a quit or crash is queued again when the engine starts (at most 5 attempts per job) |
 | `transcript.get` | `project_id`, `include_words?` | transcript (below) |
 | `transcript.original` | `project_id` | the AI-generated transcript as first stored (speakers, segments, words); never changed by corrections |
 | `transcript.history` | `project_id` | `{edits: [{id, kind, summary, undone, created_at}]}` newest first |
@@ -63,14 +72,71 @@ interrupted (resumable), never silently lost.
 | `suggestions.list` | `project_id`, `statuses?[]` | `{suggestions: [suggestion]}` |
 | `suggestions.accept` | `suggestion_id` | `{suggestion, summary, changed, transcript?, job}`: punctuation and terminology suggestions are applied as an undoable text edit, `suspicious` marks the passage uncertain with the model's reason, `retranscribe` starts a `recheck` job (the audio decides, not the language model). A suggestion whose passage changed since is marked `outdated` and not applied |
 | `suggestions.reject` | `suggestion_id` | suggestion |
-| `export.formats` | — | `{formats: ["txt"]}` |
-| `export.render` | `project_id`, `format`, `options?` | `{content, suggested_filename}` |
+| `search.transcripts` | `query`, `project_id?`, `speaker_id?`, `include_original?`, `limit?` (default 100, at most 500) | `{query, terms[], method (index / substring), results[{project_id, project_title, segment_id, start, end, speaker_id, speaker, text, highlights[[start, end]], in_original_only}], truncated}`; `invalid_params` when the query has no words |
+| `export.formats` | — | `{formats: ["txt", "srt", "vtt", "json", "csv", "md"]}` |
+| `export.render` | `project_id`, `format`, `options?` | `{content, suggested_filename}` (formats below) |
 | `export.write` | `project_id`, `format`, `path`, `options?` | `{path, bytes}` (atomic write) |
 | `models.list` | — | `{models_dir, models: [model + status], downloads, backends}`; `model.kind` ∈ asr, diarization, alignment, with `license`, `languages` (empty = any), `homepage` |
 | `models.download` | `model_id` | download state; progress via `model.download` notifications |
 | `models.cancelDownload` | `model_id` | `{ok}` |
 | `models.delete` | `model_id` | `{model_id, status}` |
 | `settings.get` / `settings.set` | `models_dir?` (absolute path or null for default) | `{models_dir, default_models_dir}` |
+
+### Search
+
+The user's text is never passed to SQLite as query syntax: it is split into
+words and `"quoted phrases"`; words match as prefixes (`americ` finds
+"Americans"), all terms must occur, and case and diacritics are ignored
+(FTS5, `unicode61 remove_diacritics 2`). Languages written without spaces
+(Chinese, Japanese, Thai, …) are searched by substring (`method:
+"substring"`). `highlights` are `[start, end)` offsets into `text` in Unicode
+code points. With `include_original`, passages whose AI wording matched but
+the user's correction does not are included with `in_original_only: true`.
+
+### Export formats
+
+| format | content | options |
+|--------|---------|---------|
+| `txt` | header (title, source, duration, language, model), then one block per speaker turn: `[hh:mm:ss] Speaker` and the text (per passage `[hh:mm:ss] text` without speakers) | `timestamps`, `header`, `speakers` (default true) |
+| `srt` | subtitle cues cut from the word times: at most 2 lines of 42 characters and 7 s, ending at a sentence end once a cue has run 1.5 s, at least 0.7 s on screen (never into the next cue), never across two passages; the speaker's name starts the first cue of each turn | `speakers` |
+| `vtt` | the same cues with `<v Speaker>` voice tags; text escaped | `speakers` |
+| `json` | `{format: "verbatim-transcript", version: 1, exported_at, project {id, title, source, duration, language, created_at, updated_at, transcription (the producing job's mode, model, settings), revision}, speakers[{id, label, name, display_name, origin, …}], segments[{id, start, end, speaker_id, speaker, original_speaker_id, text, original_text, text_edited, speaker_edited, language, review_priority, flags[], words[{start, end, text, probability, timing_source, speaker_id}]}], original {job_id, created_at, speakers, segments}}`: the corrected transcript, every uncertainty flag, word times where available and the original AI transcript | — |
+| `csv` | one row per passage (`segment_id, start, end, start_clock, speaker, text, original_text, text_edited, review_priority, open_flags`), or per word with `words: true`; UTF-8 with a byte-order mark; cells starting with `=`, `+`, `-`, `@`, tab or carriage return get a leading `'` so spreadsheets do not run them as formulas | `words`, `bom` |
+| `md` | title, source and model, one paragraph per passage starting `**[hh:mm:ss] Speaker**`, and a "Passages to review" section listing open doubts | `review` (default true) |
+
+### Video import (YouTube)
+
+`youtube.inspect` result: `url` (canonical `https://www.youtube.com/watch?v=ID`),
+`video_id, title, channel, channel_url, duration, upload_date, license,
+language, live_status, availability, thumbnail, chapters[{start, end, title}],
+sponsor_chapters[]` (chapters the creator titled as sponsor or ad segments),
+`captions[{language, name, kind, formats}]` (`manual`: the creator's; `auto`:
+YouTube's automatic captions in the video's own language, never machine
+translations), `approx_bytes {video, audio}` (YouTube's estimates, null when
+not given), `refusal {code, message} | null` and `ads_note`.
+
+Accepted links: one video, as `youtube.com/watch?v=`, `youtu.be/`, `/shorts/`,
+`/live/`, `/embed/`, `m.` and `music.` hosts and `youtube-nocookie.com/embed/`;
+playlists, channels, other sites, credentials and ports in the URL are refused
+before any network access. Retrieval uses yt-dlp with no cookies, no sign-in,
+no geo bypass and no unplayable or DRM formats; only the YouTube extractor
+runs. Media: AAC audio and, unless `media: "audio"`, H.264 video up to 720p,
+joined without re-encoding (or a combined format when that is all there is),
+stored under `<data dir>/media/<project id>/` and removed with the project.
+For tests only, `VERBATIM_TEST_MEDIA_HOST` may name one loopback `host:port`
+whose pages are accepted instead (yt-dlp's generic extractor).
+
+A URL project's `source` is `{kind: "url", url, path, size_bytes, mtime_ns}`
+with `path` null and `media` null until the media is retrieved;
+`source_meta` records the video's metadata, the user's authorization
+`{confirmed_at, statement}`, what was requested `{media, caption_tracks}`
+and, after retrieval, `retrieved {file, bytes, formats, has_video, duration,
+captions, warnings}`.
+
+Ads: YouTube inserts most ads while a video plays; they are not in the
+retrieved file and are not transcribed. Sponsor messages that are part of
+the video are transcribed like any other speech; passages inside a sponsor
+chapter get an informational `in_sponsor_chapter` flag.
 
 ### Job options
 
@@ -95,10 +161,14 @@ interrupted (resumable), never silently lost.
 
 ### Job snapshot
 
-`kind` ∈ transcribe, recheck. `status` ∈ queued, running, completed, failed,
+`kind` ∈ transcribe, recheck, youtube. `status` ∈ queued, running, completed, failed,
 cancelled, interrupted. `stages[]` in order: for `transcribe` prepare, extract,
 analyze, load_model, transcribe, diarize, align, quality, retranscribe,
-validate, finalize; for `recheck` prepare, retranscribe, finalize. Each has `status` (pending, running, completed, failed,
+validate, finalize; for `recheck` prepare, retranscribe, finalize; for
+`youtube` download (`unit: "bytes"`; a total only when YouTube reported exact
+sizes) followed by the `transcribe` stages. A resumed `youtube` job continues
+a partial download and never retrieves finished media twice.
+`queue_position` (1 = next) is set while the job is queued. Each has `status` (pending, running, completed, failed,
 skipped, cancelled), `label`, `elapsed_seconds`, `progress {done,total,unit}|null`,
 `fraction` (only when a real numerator and denominator exist, else null),
 `eta_seconds` (only after enough measured work in the current attempt, else null)
@@ -110,7 +180,9 @@ aligned / failed / skipped, wildcard words); since protocol 3 `quality`
 (speech detectors, flag counts), `recheck` (enabled or the reason it was not,
 targets, windows, decodes, acoustic model, and counts: replaced, recovered,
 unresolved, no_acoustic_support, confirmed, same_wording, not_comparable) and
-`validation` (segments, timing_fixes, words_out_of_order, possible_duplicates,
+since protocol 4 `source` for video
+imports (`captions_compared[{language, kind, passages_differ}]`,
+`sponsor_chapters`, `segments_in_sponsor_chapters`), and `validation` (segments, timing_fixes, words_out_of_order, possible_duplicates,
 missing_speech, untranscribed_seconds, untranscribed[{start, end, severity}] (at
 most 100 listed), review {high, medium, low}, needs_review). The
 `retranscribe` stage counts decodes (`unit: "decodes"`); no stage reports a
@@ -176,6 +248,8 @@ Flags record every automatic decision and every doubt:
 | `possible_duplicate` | the start repeats the end of the previous segment (`text`) |
 | `timing_inconsistent` | word times out of order (`words`) |
 | `reviewed` | the user checked the passage (`by`, `at`); informational |
+| `captions_differ` | the published captions say something clearly different here (`source`: manual or auto, `language`, `caption_text`, `agreement` 0–1); low. Captions are never merged into the transcript |
+| `in_sponsor_chapter` | the passage lies in a chapter the creator titled as a sponsor or ad segment (`title`, `start`, `end`); informational |
 
 Flags with `severity` use it; others default as listed. Any flag with
 `resolved: true` (e.g. after `transcript.chooseWording`, with `chosen_by_user`)
@@ -203,6 +277,7 @@ rewritten words get interpolated times (`timing_source: interpolated`).
 | `model.download` | `{model_id, status: running/cancelling/completed/failed/cancelled, done, total, total_is_estimate, error}` |
 | `transcript.updated` | `{project_id, revision, summary}` after a correction, undo or redo |
 | `llm.run.updated` | review run, on every change of status, batch progress or result |
+| `queue.updated` | `{paused, auto_resume, running: job id \| null, queued: [job id]}` when the queue's order, paused state or contents change |
 
 ### AI review run and suggestion
 
@@ -227,4 +302,9 @@ words), created_at, decided_at`. Nothing is applied until accepted.
 `worker_crashed`, `interrupted`, `internal_error`; since protocol 3
 `audio_unavailable` (a re-check job found no extracted audio), `llm_error`
 (the language-model endpoint failed or answered out of format) and
-`invalid_state` (an AI review of the project is already running).
+`invalid_state` (an AI review of the project is already running); since
+protocol 4 `youtube_blocked` (YouTube asks this computer to sign in to prove it
+is not a bot), `youtube_restricted` (private, members-only, age-restricted,
+paid or not available in this country), `youtube_live` (live, upcoming or
+still processing), `youtube_drm`, `youtube_unavailable`, `youtube_unsupported`
+(no audio Verbatim can retrieve), `youtube_network` and `youtube_error`.

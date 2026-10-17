@@ -13,6 +13,12 @@ import VerbatimCore
 ///                                    speaker identification and word
 ///                                    alignment; then rename a speaker, undo
 ///                                    it, and re-check two passages
+///     VERBATIM_SELF_TEST_PAGE        a video page on this computer (with
+///                                    VERBATIM_TEST_MEDIA_HOST, loopback
+///                                    only): export every format, search,
+///                                    read the queue, and import the page's
+///                                    media and captions through the bundled
+///                                    yt-dlp
 ///
 /// It goes through the same AppModel the UI uses (engine start, validation,
 /// import, job notifications, transcript loading), opens the transcript
@@ -24,6 +30,7 @@ struct SelfTest {
     let backend: String
     let output: URL
     let speakers: Bool
+    let page: String?
 
     struct Failure: Error, CustomStringConvertible {
         let description: String
@@ -39,8 +46,17 @@ struct SelfTest {
             modelDirectory: modelDirectory,
             backend: env["VERBATIM_SELF_TEST_BACKEND"] ?? "faster-whisper",
             output: URL(fileURLWithPath: output, isDirectory: true),
-            speakers: env["VERBATIM_SELF_TEST_SPEAKERS"] == "1"
+            speakers: env["VERBATIM_SELF_TEST_SPEAKERS"] == "1",
+            page: env["VERBATIM_SELF_TEST_PAGE"]
         )
+    }
+
+    /// The loopback test host is passed to the engine during a self-test
+    /// only; the engine accepts nothing but loopback addresses there.
+    static func engineEnvironment() -> [String: String] {
+        let env = ProcessInfo.processInfo.environment
+        guard env["VERBATIM_SELF_TEST_OUTPUT"] != nil, let host = env["VERBATIM_TEST_MEDIA_HOST"] else { return [:] }
+        return ["VERBATIM_TEST_MEDIA_HOST": host]
     }
 
     /// Appends a line to progress.log so a hang can be located from outside.
@@ -124,6 +140,10 @@ struct SelfTest {
                 result["recheck_summary"] = rechecked.history.undoSummary.map { $0 as Any } ?? NSNull()
                 step("re-check \(recheck.status.rawValue)")
             }
+            if let page {
+                try await stage4(model, project: project, transcript: transcript, page: page, options: options,
+                                 into: &result)
+            }
         } catch {
             result["status"] = "failed"
             result["error"] = String(describing: error)
@@ -133,6 +153,42 @@ struct SelfTest {
         }
         step("result written; quitting")
         NSApp.terminate(nil)  // the normal quit path: the engine is stopped cleanly
+    }
+
+    /// Exports, search and the queue through the app's client, then an import
+    /// from a local video page with its captions.
+    private func stage4(_ model: AppModel, project: Project, transcript: Transcript, page: String, options: JobOptions,
+                        into result: inout [String: Any]) async throws {
+        var exports: [String: Int] = [:]
+        for format in ExportFormat.allCases {
+            exports[format.rawValue] = try await model.client.renderExport(projectId: project.id, format: format.rawValue)
+                .content.count
+        }
+        result["exports"] = exports
+        let word = transcript.segments.flatMap { $0.text.split(separator: " ") }
+            .map { $0.trimmingCharacters(in: .punctuationCharacters) }.max { $0.count < $1.count } ?? ""
+        let found = try await model.client.searchTranscripts(word)
+        result["search"] = ["query": word, "hits": found.results.filter { $0.projectId == project.id }.count] as [String: Any]
+        result["queue_paused"] = try await model.client.queueState().paused
+        step("exports, search and queue done")
+
+        let video = try await model.client.inspectYouTube(page)
+        let chosen = video.captions.prefix(1).map { CaptionChoice(language: $0.language, kind: $0.kind) }
+        let created = try await model.client.createFromYouTube(video.url, authorized: true, options: options,
+                                                               audioOnly: true, captions: chosen)
+        model.noteCreated(created)
+        step("import queued: \(created.job.id)")
+        let job = try await finished(model, project: created.project.id, after: created.job.id)
+        let imported = try await model.client.project(created.project.id)
+        let text = try await model.client.transcript(projectId: imported.id).segments.map(\.text).joined(separator: " ")
+        let captions = try await model.client.captions(projectId: imported.id).map(\.kind)
+        result["import"] = [
+            "stages": job.stages.map { "\($0.stage):\($0.status.rawValue)" },
+            "has_media": imported.media != nil,
+            "captions": captions,
+            "text": text,
+        ] as [String: Any]
+        step("import \(job.status.rawValue)")
     }
 
     /// Waits for the project's latest job (or exactly ``after``) to finish;
