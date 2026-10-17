@@ -13,6 +13,7 @@ struct ProcessingView: View {
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
+                        QueueControls()
                         if !model.activeJobs.isEmpty {
                             Text("In progress").font(.headline)
                             ForEach(model.activeJobs) { job in
@@ -32,6 +33,34 @@ struct ProcessingView: View {
             }
         }
         .navigationTitle("Processing")
+    }
+}
+
+/// Pause or resume the queue. The queue, its order and its paused state are
+/// kept by the engine across restarts.
+struct QueueControls: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        let paused = model.queue?.paused ?? false
+        let running = model.activeJobs.contains { $0.status == .running }
+        HStack(spacing: 10) {
+            Label(paused ? "Queue paused — no new job starts" : "Queue running",
+                  systemImage: paused ? "pause.circle.fill" : "play.circle")
+                .foregroundStyle(paused ? Color.orange : Color.secondary)
+            Spacer()
+            if paused {
+                Button("Resume Queue") { Task { await model.resumeQueue() } }
+            } else {
+                Button("Pause After This Job") { Task { await model.pauseQueue(interrupt: false) } }
+                    .disabled(model.activeJobs.isEmpty)
+                    .help("The running job finishes; queued jobs wait")
+                Button("Pause Now") { Task { await model.pauseQueue(interrupt: true) } }
+                    .disabled(!running)
+                    .help("Stop the running job now; it keeps its progress and continues first when you resume")
+            }
+        }
+        .controlSize(.small)
     }
 }
 
@@ -66,7 +95,9 @@ struct JobCard: View {
     private var summary: String {
         let mode = model.modes.first { $0.id == job.mode }?.label ?? job.mode
         switch job.status {
-        case .queued: return "\(mode) · waiting for the current job to finish"
+        case .queued:
+            let place = job.queuePosition.map { "#\($0) in the queue" } ?? "queued"
+            return model.queue?.paused == true ? "\(mode) · \(place) · queue paused" : "\(mode) · \(place)"
         case .running: return "\(mode) · attempt \(job.attempt)"
         case .completed: return "\(mode) · completed"
         case .failed: return "\(mode) · failed"
@@ -78,6 +109,15 @@ struct JobCard: View {
     @ViewBuilder
     private var actions: some View {
         HStack(spacing: 6) {
+            if job.status == .queued, model.queuedJobs.count > 1 {
+                let queued = model.queuedJobs
+                Button { Task { await model.move(job, by: -1) } } label: { Image(systemName: "arrow.up") }
+                    .disabled(queued.first?.id == job.id)
+                    .help("Run earlier")
+                Button { Task { await model.move(job, by: 1) } } label: { Image(systemName: "arrow.down") }
+                    .disabled(queued.last?.id == job.id)
+                    .help("Run later")
+            }
             if job.status.isActive {
                 Button("Cancel") { Task { await model.cancel(job) } }
                     .disabled(job.cancelRequested)

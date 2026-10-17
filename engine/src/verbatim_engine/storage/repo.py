@@ -10,7 +10,7 @@ import json
 from typing import Any, Iterable
 
 from ..audio.chunking import Chunk
-from ..errors import NotFound
+from ..errors import InvalidJobState, NotFound
 from ..media.probe import MediaInfo
 from ..transcript.model import TSegment
 from ..verify.review import review_priority
@@ -165,9 +165,10 @@ def create_job(db: Database, project_id: str, mode: str, options: dict[str, Any]
         if conn.execute("SELECT 1 FROM projects WHERE id = ?", (project_id,)).fetchone() is None:
             raise NotFound("Project not found.", data={"project_id": project_id})
         conn.execute(
-            """INSERT INTO jobs (id, project_id, status, mode, options_json, created_at, updated_at, kind)
-               VALUES (?, ?, 'queued', ?, ?, ?, ?, ?)""",
-            (job_id, project_id, mode, json.dumps(options), now, now, kind),
+            """INSERT INTO jobs (id, project_id, status, mode, options_json, created_at, updated_at, kind,
+                   queue_position)
+               VALUES (?, ?, 'queued', ?, ?, ?, ?, ?, ?)""",
+            (job_id, project_id, mode, json.dumps(options), now, now, kind, _queue_end(conn)),
         )
         for stage in JOB_KIND_STAGES[kind]:
             conn.execute(
@@ -235,7 +236,17 @@ def _job_row_to_dict(db: Database, row) -> dict[str, Any]:
         "cancel_requested": bool(row["cancel_requested"]),
         "error": {"code": row["error_code"], "message": row["error_message"]} if row["error_code"] else None,
         "stages": [_stage_dict(s, row["status"]) for s in stages],
+        # 1 = runs next; None unless queued
+        "queue_position": _queue_rank(db, row) if row["status"] == "queued" else None,
     }
+
+
+def _queue_rank(db: Database, row) -> int:
+    ahead = db.query_one(
+        """SELECT COUNT(*) FROM jobs WHERE status = 'queued'
+           AND (queue_position < ? OR (queue_position = ? AND created_at < ?))""",
+        (row["queue_position"], row["queue_position"], row["created_at"]))[0]
+    return int(ahead) + 1
 
 
 def get_job(db: Database, job_id: str) -> dict[str, Any]:
@@ -271,9 +282,37 @@ def list_jobs(
     return [_job_row_to_dict(db, r) for r in db.query(sql, params)]
 
 
+def _queue_end(conn) -> float:
+    return float(conn.execute("SELECT COALESCE(MAX(queue_position), 0) + 1 FROM jobs").fetchone()[0])
+
+
+def _queue_front(conn) -> float:
+    row = conn.execute("SELECT MIN(queue_position) FROM jobs WHERE status = 'queued'").fetchone()[0]
+    return (float(row) if row is not None else _queue_end(conn)) - 1
+
+
 def next_queued_job(db: Database) -> str | None:
-    row = db.query_one("SELECT id FROM jobs WHERE status = 'queued' ORDER BY created_at ASC LIMIT 1")
+    row = db.query_one("SELECT id FROM jobs WHERE status = 'queued' ORDER BY queue_position, created_at LIMIT 1")
     return row["id"] if row else None
+
+
+def queued_job_ids(db: Database) -> list[str]:
+    """Queued jobs in the order they will run."""
+    return [r["id"] for r in db.query("SELECT id FROM jobs WHERE status = 'queued' ORDER BY queue_position, created_at")]
+
+
+def reorder_queue(db: Database, job_ids: list[str]) -> list[str]:
+    """Run the queued jobs in this order. The list must name exactly the
+    queued jobs (the app's view of the queue may be out of date)."""
+    with db.transaction() as conn:
+        current = [r["id"] for r in conn.execute(
+            "SELECT id FROM jobs WHERE status = 'queued' ORDER BY queue_position, created_at")]
+        if sorted(current) != sorted(job_ids) or len(set(job_ids)) != len(job_ids):
+            raise InvalidJobState("The queue changed meanwhile. Reload it and try again.", data={"queued": current})
+        start = _queue_front(conn) - len(job_ids)
+        for i, job_id in enumerate(job_ids):
+            conn.execute("UPDATE jobs SET queue_position = ? WHERE id = ?", (start + i, job_id))
+    return queued_job_ids(db)
 
 
 def mark_job_running(db: Database, job_id: str, pid: int) -> int:
@@ -329,14 +368,17 @@ def request_cancel(db: Database, job_id: str) -> None:
     db.execute("UPDATE jobs SET cancel_requested = 1, updated_at = ? WHERE id = ?", (utc_now(), job_id))
 
 
-def requeue_job(db: Database, job_id: str) -> None:
+def requeue_job(db: Database, job_id: str, *, front: bool = False) -> None:
+    """Queue a stopped job again: at the end of the queue, or (work that was
+    only interrupted) at its front."""
     now = utc_now()
     with db.transaction() as conn:
         row = conn.execute("SELECT project_id FROM jobs WHERE id = ?", (job_id,)).fetchone()
+        position = _queue_front(conn) if front else _queue_end(conn)
         conn.execute(
             """UPDATE jobs SET status = 'queued', cancel_requested = 0, error_code = NULL,
-                   error_message = NULL, finished_at = NULL, updated_at = ? WHERE id = ?""",
-            (now, job_id),
+                   error_message = NULL, finished_at = NULL, updated_at = ?, queue_position = ? WHERE id = ?""",
+            (now, position, job_id),
         )
         conn.execute(
             "UPDATE job_stages SET status = 'pending' WHERE job_id = ? AND status IN ('failed','cancelled','running')",

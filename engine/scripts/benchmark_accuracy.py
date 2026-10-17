@@ -46,6 +46,7 @@ from verbatim_engine.models.manager import MANIFEST_NAME  # noqa: E402
 from verbatim_engine.paths import EnginePaths  # noqa: E402
 from verbatim_engine.rpc.service import EngineService  # noqa: E402
 from verbatim_engine.storage import repo  # noqa: E402
+from verbatim_engine.storage.db import Database  # noqa: E402
 from verbatim_engine.verify.review import LEVELS, review_priority  # noqa: E402
 
 TERMINAL = ("completed", "failed", "cancelled", "interrupted")
@@ -225,10 +226,11 @@ def run_interrupted(item, args, root: Path) -> dict:
         s["stage"] == "transcribe" and s["status"] == "running" and (s.get("progress") or {}).get("done", 0) > 0
         for s in j["stages"]))
     first.shutdown()  # the app quits
-    second = make_service(data, args)
+    stored = Database(data / "verbatim.sqlite3")
+    stopped = repo.get_job(stored, job["id"])["status"]
+    stored.close()
+    second = make_service(data, args)  # interrupted work is queued again when the engine starts
     try:
-        stopped = repo.get_job(second.db, job["id"])["status"]
-        second.jobs.resume(job["id"])
         job = wait(second, job["id"])
         result = measure(second, project["id"], job, item)
         result["status_after_quit"] = stopped

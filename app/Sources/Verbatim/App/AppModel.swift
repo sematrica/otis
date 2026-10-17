@@ -73,6 +73,8 @@ final class AppModel: ObservableObject {
     @Published var section: SidebarSection? = .library
     /// Ask the current section to open a project's workspace.
     @Published var openProjectRequest: String?
+    /// The processing queue's paused state and order (engine-persisted).
+    @Published private(set) var queue: QueueUpdate?
     /// Where to go when a project opens (from a search result), by project id.
     var pendingFocus: [String: SearchFocus] = [:]
     /// Bumped whenever a project's transcript may have changed.
@@ -154,6 +156,8 @@ final class AppModel: ObservableObject {
             transcriptRevision[update.projectId, default: 0] += 1
         case .llmRunUpdated(let run):
             llmRuns[run.id] = run
+        case .queueUpdated(let update):
+            queue = update
         case .modelDownload(let state):
             downloads[state.modelId] = state
             if state.isFinished {
@@ -189,10 +193,15 @@ final class AppModel: ObservableObject {
             async let projectList = client.listProjects()
             async let jobList = client.listJobs()
             async let modeList = client.modes()
+            async let queueNow = client.queueState()
             projects = try await projectList
             var byID: [String: Job] = [:]
             for job in try await jobList { byID[job.id] = job }
+            let state = try await queueNow
+            for job in state.queued { byID[job.id] = job }
             jobs = byID
+            queue = QueueUpdate(paused: state.paused, autoResume: state.autoResume, running: state.running?.id,
+                                queued: state.queued.map(\.id))
             modes = try await modeList
         } catch {
             report(error, title: "Could not load projects")
@@ -216,8 +225,47 @@ final class AppModel: ObservableObject {
         jobs.values.filter { $0.projectId == projectID }.max { $0.createdAt < $1.createdAt }
     }
 
+    /// The running job, then the queued ones in the order they will run.
     var activeJobs: [Job] {
-        jobs.values.filter { $0.status.isActive }.sorted { $0.createdAt < $1.createdAt }
+        let order = Dictionary(uniqueKeysWithValues: (queue?.queued ?? []).enumerated().map { ($1, $0) })
+        return jobs.values.filter { $0.status.isActive }.sorted {
+            let a = $0.status == .running ? -1 : (order[$0.id] ?? $0.queuePosition ?? Int.max)
+            let b = $1.status == .running ? -1 : (order[$1.id] ?? $1.queuePosition ?? Int.max)
+            return (a, $0.createdAt) < (b, $1.createdAt)
+        }
+    }
+
+    var queuedJobs: [Job] { activeJobs.filter { $0.status == .queued } }
+
+    // MARK: Queue
+
+    func pauseQueue(interrupt: Bool) async {
+        do { apply(try await client.pauseQueue(interrupt: interrupt)) } catch { report(error, title: "Could not pause") }
+    }
+
+    func resumeQueue() async {
+        do { apply(try await client.resumeQueue()) } catch { report(error, title: "Could not resume the queue") }
+    }
+
+    /// Moves a queued job up (-1) or down (+1).
+    func move(_ job: Job, by offset: Int) async {
+        var order = queuedJobs.map(\.id)
+        guard let index = order.firstIndex(of: job.id) else { return }
+        let target = index + offset
+        guard order.indices.contains(target) else { return }
+        order.swapAt(index, target)
+        do { apply(try await client.reorderQueue(order)) } catch { report(error, title: "Could not reorder the queue") }
+    }
+
+    func setAutoResume(_ enabled: Bool) async {
+        do { apply(try await client.setAutoResume(enabled)) } catch { report(error, title: "Could not change the setting") }
+    }
+
+    private func apply(_ state: QueueState) {
+        for job in state.queued { jobs[job.id] = job }
+        if let running = state.running { jobs[running.id] = running }
+        queue = QueueUpdate(paused: state.paused, autoResume: state.autoResume, running: state.running?.id,
+                            queued: state.queued.map(\.id))
     }
 
     var recentlyFinishedJobs: [Job] {

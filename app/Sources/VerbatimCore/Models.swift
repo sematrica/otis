@@ -253,6 +253,8 @@ public struct Job: Codable, Hashable, Sendable, Identifiable {
     public var cancelRequested: Bool
     public var error: ErrorInfo?
     public var stages: [JobStage]
+    /// Place in the processing queue (1 = next), while queued.
+    public var queuePosition: Int?
 
     public var runningStage: JobStage? { stages.first { $0.status == .running } }
     public var updatedDate: Date? { ISO8601.parse(updatedAt) }
@@ -469,6 +471,24 @@ public struct EditRecord: Codable, Hashable, Sendable, Identifiable {
 }
 
 public struct EditHistoryResult: Codable, Sendable { public var edits: [EditRecord] }
+
+/// The processing queue (``queue.get``), persisted by the engine.
+public struct QueueState: Codable, Sendable {
+    public var paused: Bool
+    /// Interrupted work is queued again when the engine starts.
+    public var autoResume: Bool
+    public var running: Job?
+    /// In the order they will run.
+    public var queued: [Job]
+}
+
+/// ``queue.updated``: the queue's order or paused state changed.
+public struct QueueUpdate: Codable, Hashable, Sendable {
+    public var paused: Bool
+    public var autoResume: Bool
+    public var running: String?
+    public var queued: [String]
+}
 
 public struct TranscriptUpdated: Codable, Hashable, Sendable {
     public var projectId: String

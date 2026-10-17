@@ -43,6 +43,13 @@ def _require(params: dict[str, Any], key: str, kind: type = str) -> Any:
     return value
 
 
+def _str_list(params: dict[str, Any], key: str) -> list[str]:
+    value = params.get(key)
+    if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+        raise InvalidParams(f"Parameter '{key}' must be a list of strings.")
+    return value
+
+
 def _int_list(params: dict[str, Any], key: str) -> list[int]:
     value = params.get(key)
     if not isinstance(value, list) or not value or not all(isinstance(v, int) and not isinstance(v, bool) for v in value):
@@ -117,6 +124,11 @@ class EngineService:
                                                                      _int_list(p, "segment_ids")),
             "transcript.undo": lambda p: self._edit(p, self.editor.undo),
             "transcript.redo": lambda p: self._edit(p, self.editor.redo),
+            "queue.get": lambda _p: self.jobs.queue_state(),
+            "queue.pause": lambda p: self.jobs.pause(interrupt=bool(p.get("interrupt"))),
+            "queue.resume": lambda _p: self.jobs.resume_queue(),
+            "queue.reorder": lambda p: self.jobs.reorder(_str_list(p, "job_ids")),
+            "queue.setAutoResume": lambda p: self.jobs.set_auto_resume(_require(p, "enabled", bool)),
             "search.transcripts": lambda p: search_transcripts(
                 self.db, _require(p, "query"), project_id=p.get("project_id"), speaker_id=p.get("speaker_id"),
                 include_original=bool(p.get("include_original")), limit=p.get("limit") or 100),

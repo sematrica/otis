@@ -1,10 +1,16 @@
 """Persistent Job Manager (server side).
 
-Jobs are queued in the database and run one at a time — on a 16 GB machine
-two large models must never be loaded together. Each job runs in a worker
-subprocess; this manager spawns it, relays its progress, enforces
+Jobs are queued in the database and run one at a time, in queue order — on a
+16 GB machine two large models must never be loaded together. Each job runs
+in a worker subprocess; this manager spawns it, relays its progress, enforces
 cancellation, and reconciles the job's final state when the worker exits for
 any reason (including native crashes).
+
+The queue is persistent: its order and its paused state are stored, and work
+interrupted by quitting (or a crash of the engine) is queued again at the
+front when the engine starts, unless the user turned that off. A job is only
+resumed automatically while it is its project's latest job, and at most
+:data:`MAX_AUTO_ATTEMPTS` times.
 """
 
 from __future__ import annotations
@@ -31,6 +37,10 @@ log = logging.getLogger(__name__)
 Notify = Callable[[str, dict[str, Any]], None]
 
 CANCEL_GRACE_SECONDS = 10.0
+#: Attempts after which interrupted work is no longer resumed automatically.
+MAX_AUTO_ATTEMPTS = 5
+SETTING_PAUSED = "queue.paused"
+SETTING_AUTO_RESUME = "queue.auto_resume"
 
 
 class _Running:
@@ -40,6 +50,8 @@ class _Running:
         self.log_path = log_path
         self.cancel_requested = False
         self.shutdown_requested = False
+        #: stopped by "pause now": queued again at the front afterwards
+        self.pause_requested = False
         self.kill_timer: threading.Timer | None = None
         self.monitor: threading.Thread | None = None
 
@@ -60,6 +72,8 @@ class JobManager:
 
     def start(self) -> None:
         self.recover()
+        if repo.get_setting(self.db, SETTING_AUTO_RESUME, True):
+            self.resume_interrupted()
         self._scheduler = threading.Thread(target=self._schedule_loop, name="job-scheduler", daemon=True)
         self._scheduler.start()
 
@@ -79,6 +93,73 @@ class JobManager:
         if recovered:
             log.info("marked %d job(s) as interrupted", len(recovered))
         return recovered
+
+    def resume_interrupted(self) -> list[str]:
+        """Queue interrupted work again, at the front, in its queue order."""
+        resumed = []
+        rows = self.db.query(
+            """SELECT j.id, j.project_id, j.attempt FROM jobs j JOIN projects p ON p.id = j.project_id
+               WHERE j.status = 'interrupted' AND p.last_job_id = j.id
+               ORDER BY j.queue_position DESC, j.created_at DESC""")
+        for row in rows:  # last first: each goes to the front
+            if row["attempt"] >= MAX_AUTO_ATTEMPTS:
+                continue
+            if repo.list_jobs(self.db, statuses=["queued", "running"], project_id=row["project_id"], limit=1):
+                continue
+            repo.requeue_job(self.db, row["id"], front=True)
+            resumed.append(row["id"])
+        if resumed:
+            log.info("resumed %d interrupted job(s)", len(resumed))
+        return list(reversed(resumed))
+
+    # ------------------------------------------------------------------ queue
+
+    def queue_state(self) -> dict[str, Any]:
+        with self._lock:
+            running = self._running.job_id if self._running else None
+        return {
+            "paused": bool(repo.get_setting(self.db, SETTING_PAUSED, False)),
+            "auto_resume": bool(repo.get_setting(self.db, SETTING_AUTO_RESUME, True)),
+            "running": repo.get_job(self.db, running) if running else None,
+            "queued": [repo.get_job(self.db, job_id) for job_id in repo.queued_job_ids(self.db)],
+        }
+
+    def pause(self, interrupt: bool = False) -> dict[str, Any]:
+        """Start no further jobs. With ``interrupt``, also stop the running job
+        now; it keeps its progress and is queued again at the front."""
+        repo.set_setting(self.db, SETTING_PAUSED, True)
+        if interrupt:
+            with self._lock:
+                running = self._running
+                if running is not None and not running.cancel_requested:
+                    running.pause_requested = True
+                    self._signal(running.process, signal.SIGINT)
+        self._queue_changed()
+        return self.queue_state()
+
+    def resume_queue(self) -> dict[str, Any]:
+        repo.set_setting(self.db, SETTING_PAUSED, False)
+        self._queue_changed()
+        self._wake.set()
+        return self.queue_state()
+
+    def reorder(self, job_ids: list[str]) -> dict[str, Any]:
+        repo.reorder_queue(self.db, job_ids)
+        for job_id in job_ids:
+            self._announce(job_id)
+        self._queue_changed()
+        return self.queue_state()
+
+    def set_auto_resume(self, enabled: bool) -> dict[str, Any]:
+        repo.set_setting(self.db, SETTING_AUTO_RESUME, bool(enabled))
+        self._queue_changed()
+        return self.queue_state()
+
+    def _queue_changed(self) -> None:
+        state = self.queue_state()
+        self.notify("queue.updated", {"paused": state["paused"], "auto_resume": state["auto_resume"],
+                                      "running": state["running"]["id"] if state["running"] else None,
+                                      "queued": [job["id"] for job in state["queued"]]})
 
     def shutdown(self, timeout: float = CANCEL_GRACE_SECONDS) -> None:
         self._stopping.set()
@@ -112,6 +193,7 @@ class JobManager:
             raise InvalidJobState("This project already has a job in progress.", data={"job_id": active[0]["id"]})
         job = repo.create_job(self.db, project_id, normalized["mode"], normalized)
         self._announce(job["id"])
+        self._queue_changed()
         self._wake.set()
         return job
 
@@ -136,6 +218,7 @@ class JobManager:
                    "recheck_request": {"segment_ids": wanted, "source_job": source["id"]}}
         job = repo.create_job(self.db, project_id, options["mode"], options, kind="recheck")
         self._announce(job["id"])
+        self._queue_changed()
         self._wake.set()
         return job
 
@@ -156,6 +239,7 @@ class JobManager:
         else:
             raise InvalidJobState(f"A {job['status']} job cannot be cancelled.", data={"status": job["status"]})
         self._announce(job_id)
+        self._queue_changed()
         return repo.get_job(self.db, job_id)
 
     def resume(self, job_id: str) -> dict[str, Any]:
@@ -167,6 +251,7 @@ class JobManager:
             raise InvalidJobState("This project already has a job in progress.", data={"job_id": active[0]["id"]})
         repo.requeue_job(self.db, job_id)
         self._announce(job_id)
+        self._queue_changed()
         self._wake.set()
         return repo.get_job(self.db, job_id)
 
@@ -216,7 +301,7 @@ class JobManager:
             if self._stopping.is_set():
                 return
             with self._lock:
-                if self._running is not None:
+                if self._running is not None or repo.get_setting(self.db, SETTING_PAUSED, False):
                     continue
                 job_id = repo.next_queued_job(self.db)
                 if job_id is None:
@@ -246,6 +331,7 @@ class JobManager:
         self._running = running
         repo.mark_job_running(self.db, job_id, process.pid)
         self._announce(job_id)
+        self._queue_changed()
         running.monitor = threading.Thread(target=self._monitor, args=(running,), name=f"worker-{job_id[:8]}", daemon=True)
         running.monitor.start()
 
@@ -262,9 +348,17 @@ class JobManager:
         if running.kill_timer is not None:
             running.kill_timer.cancel()
         self._reconcile(running)
+        if running.pause_requested and not self._stopping.is_set():
+            try:
+                if repo.get_job(self.db, running.job_id)["status"] == "interrupted":
+                    repo.requeue_job(self.db, running.job_id, front=True)
+                    self._announce(running.job_id)
+            except NotFound:
+                pass
         with self._lock:
             if self._running is running:
                 self._running = None
+        self._queue_changed()
         self._wake.set()
 
     def _reconcile(self, running: _Running) -> None:
@@ -277,9 +371,10 @@ class JobManager:
             code = running.process.returncode
             if running.cancel_requested:
                 repo.finish_job(self.db, running.job_id, "cancelled", error_code="cancelled", error_message="The job was cancelled.")
-            elif running.shutdown_requested:
+            elif running.shutdown_requested or running.pause_requested:
                 repo.finish_job(self.db, running.job_id, "interrupted", error_code="interrupted",
-                                error_message="Processing stopped because the app quit. Resume to continue.")
+                                error_message="Processing stopped because the app quit. Resume to continue."
+                                if running.shutdown_requested else "Paused. It continues where it stopped.")
             else:
                 how = f"signal {-code}" if code is not None and code < 0 else f"exit code {code}"
                 repo.finish_job(

@@ -27,6 +27,7 @@ from verbatim_engine.metrics.wer import normalize, word_error_rate
 from verbatim_engine.paths import EnginePaths
 from verbatim_engine.rpc.service import EngineService
 from verbatim_engine.storage import repo
+from verbatim_engine.storage.db import Database
 
 from .conftest import CORPUS, SR, encode_media, read_wav, silence, synthesize, write_wav
 
@@ -319,6 +320,38 @@ def test_cancel_then_resume_reuses_completed_chunks(service, fw_model_dir, texts
     assert_merge_is_lossless(service, job["id"], project["id"])
 
 
+def test_pause_now_continues_where_it_stopped(service, fw_model_dir, texts, tmp_path):
+    """Persistent queue: "pause now" stops the running job; it waits at the
+    front of the paused queue and continues from its completed chunks."""
+    path, reference = build_long_recording(tmp_path, texts["english_paragraphs"][:6], pause=0.8)
+    project = service.projects_create({"path": str(path)})
+    job = service.jobs_start({"project_id": project["id"], "options": options_for(fw_model_dir, chunk_seconds=20)})
+
+    def one_chunk_done(_job):
+        return service.db.query_one("SELECT COUNT(*) FROM chunks WHERE job_id = ? AND status = 'completed'", (job["id"],))[0] >= 1
+
+    wait_job(service, job["id"], predicate=one_chunk_done)
+    assert service.jobs.pause(interrupt=True)["paused"]
+    waiting = wait_job(service, job["id"], until=("queued",), predicate=lambda j: j["status"] == "queued" and j["attempt"] == 1)
+    assert waiting["queue_position"] == 1 and waiting["error"] is None
+    time.sleep(2.5)  # paused: nothing starts
+    assert repo.get_job(service.db, job["id"])["status"] == "queued"
+    done_before = {
+        r["idx"]: r["completed_at"]
+        for r in service.db.query("SELECT idx, completed_at FROM chunks WHERE job_id = ? AND status = 'completed'", (job["id"],))
+    }
+    total = service.db.query_one("SELECT COUNT(*) FROM chunks WHERE job_id = ?", (job["id"],))[0]
+    assert 1 <= len(done_before) < total
+    service.jobs.resume_queue()
+    final = wait_job(service, job["id"])
+    assert final["status"] == "completed", final["error"]
+    assert final["attempt"] == 2
+    after = {r["idx"]: r["completed_at"] for r in service.db.query("SELECT idx, completed_at FROM chunks WHERE job_id = ?", (job["id"],))}
+    for idx, stamp in done_before.items():
+        assert after[idx] == stamp, f"chunk {idx} was re-transcribed"
+    assert record("tts_pause_resume", reference, transcript_text(service, project["id"]), chunks=total) <= 0.20
+
+
 def test_interrupted_job_recovers_after_restart(fw_model_dir, texts, data_dir, tmp_path):
     path, reference = build_long_recording(tmp_path, texts["english_paragraphs"][:6], pause=0.8)
     first = EngineService(EnginePaths.create(data_dir), lambda *_: None)
@@ -327,14 +360,16 @@ def test_interrupted_job_recovers_after_restart(fw_model_dir, texts, data_dir, t
     job = first.jobs_start({"project_id": project["id"], "options": options_for(fw_model_dir, chunk_seconds=20)})
     wait_job(first, job["id"], predicate=lambda j: j["current_stage"] == "transcribe")
     first.shutdown()  # the app quits mid-job
+    stored = Database(EnginePaths.create(data_dir).db_path)
+    stopped = repo.get_job(stored, job["id"])
+    stored.close()
+    assert stopped["status"] == "interrupted", stopped["error"]
     second = EngineService(EnginePaths.create(data_dir), lambda *_: None)
-    second.start()
+    second.start()  # interrupted work is queued again on its own (persistent queue)
     try:
-        stopped = repo.get_job(second.db, job["id"])
-        assert stopped["status"] == "interrupted", stopped["error"]
-        second.jobs.resume(job["id"])
         final = wait_job(second, job["id"])
         assert final["status"] == "completed", final["error"]
+        assert final["attempt"] == 2
         wer = record("tts_interrupted_resume", reference, transcript_text(second, project["id"]))
         assert wer <= 0.20
     finally:

@@ -182,6 +182,15 @@ private struct EngineSettingsView: View {
                     LabeledContent("Data folder", value: info.dataDir)
                     LabeledContent("Hardware", value: hardware(info.hardware))
                 }
+                Section("Processing queue") {
+                    Toggle("Continue interrupted work when Verbatim starts", isOn: Binding(
+                        get: { model.queue?.autoResume ?? true },
+                        set: { enabled in Task { await model.setAutoResume(enabled) } }
+                    ))
+                    Text("Jobs stopped by quitting continue where they stopped, in their place in the queue. "
+                         + "A job is not continued if the project has a newer transcript.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 Section("Speech-recognition backends") {
                     ForEach(info.backends) { backend in
                         LabeledContent(backend.displayName) {

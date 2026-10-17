@@ -107,6 +107,10 @@ public enum ExportFormat: String, CaseIterable, Sendable, Identifiable {
     public var fileExtension: String { rawValue }
 }
 
+public struct QueuePauseParams: Encodable, Sendable { public let interrupt: Bool }
+public struct QueueReorderParams: Encodable, Sendable { public let jobIds: [String] }
+public struct EnabledParams: Encodable, Sendable { public let enabled: Bool }
+
 public struct SearchParams: Encodable, Sendable {
     public let query: String
     public let projectId: String?
@@ -302,6 +306,25 @@ public extension EngineClient {
 
     private func edit<Params: Encodable & Sendable>(_ method: String, _ params: Params) async throws -> EditResult {
         try await call(method, params: params, as: EditResult.self, timeout: .seconds(120))
+    }
+
+    func queueState() async throws -> QueueState { try await call("queue.get", as: QueueState.self) }
+
+    /// Start no further jobs; with `interrupt`, also stop the running one now
+    /// (it keeps its progress and continues first when the queue resumes).
+    func pauseQueue(interrupt: Bool) async throws -> QueueState {
+        try await call("queue.pause", params: QueuePauseParams(interrupt: interrupt), as: QueueState.self)
+    }
+
+    func resumeQueue() async throws -> QueueState { try await call("queue.resume", as: QueueState.self) }
+
+    /// `jobIds` must be exactly the queued jobs, in the new order.
+    func reorderQueue(_ jobIds: [String]) async throws -> QueueState {
+        try await call("queue.reorder", params: QueueReorderParams(jobIds: jobIds), as: QueueState.self)
+    }
+
+    func setAutoResume(_ enabled: Bool) async throws -> QueueState {
+        try await call("queue.setAutoResume", params: EnabledParams(enabled: enabled), as: QueueState.self)
     }
 
     /// Full-text search over all transcripts, or one project's.

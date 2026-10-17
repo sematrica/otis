@@ -39,6 +39,7 @@ public enum EngineNotification: Sendable {
     case modelDownload(ModelDownload)
     case transcriptUpdated(TranscriptUpdated)
     case llmRunUpdated(LLMRun)
+    case queueUpdated(QueueUpdate)
     case other(method: String)
     /// The engine process exited; the client must be started again.
     case engineTerminated(status: Int32)
@@ -258,6 +259,8 @@ public actor EngineClient {
                 return .transcriptUpdated(try decoder.decode(NotificationEnvelope<TranscriptUpdated>.self, from: line).params)
             case "llm.run.updated":
                 return .llmRunUpdated(try decoder.decode(NotificationEnvelope<LLMRun>.self, from: line).params)
+            case "queue.updated":
+                return .queueUpdated(try decoder.decode(NotificationEnvelope<QueueUpdate>.self, from: line).params)
             default:
                 return .other(method: method)
             }

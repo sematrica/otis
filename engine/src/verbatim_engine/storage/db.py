@@ -293,8 +293,17 @@ END;
 INSERT INTO segments_fts(segments_fts) VALUES ('rebuild');
 """
 
+SCHEMA_V5 = """
+-- Stage 4: a persistent, ordered processing queue. Queued jobs run in
+-- queue_position order (the order they were added until the user reorders
+-- them); existing jobs keep their insertion order.
+ALTER TABLE jobs ADD COLUMN queue_position REAL;
+UPDATE jobs SET queue_position = rowid;
+CREATE INDEX jobs_queue ON jobs(status, queue_position);
+"""
+
 MIGRATIONS: list[tuple[int, str, bool]] = [(1, SCHEMA_V1, False), (2, SCHEMA_V2, True), (3, SCHEMA_V3, False),
-                                           (4, SCHEMA_V4, False)]
+                                           (4, SCHEMA_V4, False), (5, SCHEMA_V5, False)]
 LATEST_VERSION = MIGRATIONS[-1][0]
 
 
