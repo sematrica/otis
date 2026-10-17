@@ -642,9 +642,11 @@ def get_transcript(db: Database, project_id: str, include_words: bool = False) -
         first = conn.execute(
             "SELECT job_id FROM segments WHERE project_id = ? AND job_id IS NOT NULL LIMIT 1", (project_id,)
         ).fetchone()
+        original = conn.execute("SELECT job_id FROM original_transcripts WHERE project_id = ?",
+                                (project_id,)).fetchone()
     # Settings of the job that produced this transcript (not necessarily the
-    # project's latest job, which may have failed).
-    transcript_job_id = first["job_id"] if first else None
+    # project's latest job, which may have failed), also for an empty one.
+    transcript_job_id = first["job_id"] if first else (original["job_id"] if original else None)
     effective = None
     if transcript_job_id:
         job_row = db.query_one("SELECT effective_json FROM jobs WHERE id = ?", (transcript_job_id,))

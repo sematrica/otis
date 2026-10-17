@@ -67,7 +67,7 @@ def validate(segments: list[TSegment], speech: SpeechMap | None, duration: float
 
     for seg in out:
         seg.flags = [f for f in seg.flags if f.get("type") != "missing_speech"]
-    missing = flag_missing_speech(out, speech) if speech is not None else 0
+    gaps = flag_missing_speech(out, speech) if speech is not None else []
 
     priorities = {"high": 0, "medium": 0, "low": 0}
     for seg in out:
@@ -79,11 +79,17 @@ def validate(segments: list[TSegment], speech: SpeechMap | None, duration: float
         "timing_fixes": fixes,
         "words_out_of_order": disorder,
         "possible_duplicates": duplicates,
-        "missing_speech": missing,
+        "missing_speech": len(gaps),
+        "untranscribed_seconds": round(sum(g["end"] - g["start"] for g in gaps), 2),
+        "untranscribed": [{k: g[k] for k in ("start", "end", "severity")} for g in gaps[:MAX_LISTED]],
         "review": priorities,
         "needs_review": priorities["high"] + priorities["medium"],
     }
     return out, summary
+
+
+#: Stretches of untranscribed speech listed in the summary (all are counted).
+MAX_LISTED = 100
 
 
 def _boundary_repeat(prev: TSegment, seg: TSegment) -> str | None:

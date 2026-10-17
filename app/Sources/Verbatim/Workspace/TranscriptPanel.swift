@@ -81,11 +81,20 @@ struct TranscriptPanel: View {
                     withAnimation(.easeInOut(duration: 0.25)) { proxy.scrollTo(id, anchor: .center) }
                 }
             }
-        } else if workspace.transcript != nil {
-            EmptyState(title: "No transcript yet", systemImage: "text.bubble",
-                       message: project.status == .ready
-                           ? "No speech was detected in this recording."
-                           : "The transcript appears here when processing completes.")
+        } else if let transcript = workspace.transcript {
+            if project.status == .ready, transcript.untranscribedSpeechCount > 0 {
+                // Speech was detected but not recognised: never report that as silence.
+                let places = transcript.untranscribedSpeech.prefix(5).map(Timecode.clock).joined(separator: ", ")
+                EmptyState(title: "No words recognised", systemImage: "exclamationmark.bubble",
+                           message: "Speech was detected in \(transcript.untranscribedSpeechCount) place(s) "
+                               + "(starting at \(places)) but no words were recognised. Listen to those places, "
+                               + "or transcribe again in Maximum Accuracy mode or with a larger model.")
+            } else {
+                EmptyState(title: "No transcript yet", systemImage: "text.bubble",
+                           message: project.status == .ready
+                               ? "No speech was detected in this recording."
+                               : "The transcript appears here when processing completes.")
+            }
         } else {
             ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
         }

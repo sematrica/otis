@@ -51,7 +51,7 @@ from ..transcript.edit import TranscriptEditor
 from ..transcript.build import apply_alignment, speakers_in_order
 from ..transcript.model import TSegment
 from ..util.hardware import performance_core_count
-from ..verify.quality import SpeechMap, analyse, build_speech_map
+from ..verify.quality import SpeechMap, analyse, build_speech_map, missing_speech
 from ..verify.recheck import Recheck, summary_text
 from ..verify.retranscribe import load_decodes
 from ..verify.validate import validate
@@ -419,7 +419,11 @@ class Worker:
         repo.set_effective(self.db, self.job_id, effective)
 
         # 9. targeted re-transcription, compared by acoustic evidence (passes 6-7) ----
-        segments = self._recheck(reader, segments, language, resolved, diarization, speech, effective)
+        # (with an empty transcript, the language Whisper detected is all there is)
+        heard = language or _detected_language(pairs)
+        segments = self._recheck(reader, segments, heard, resolved, diarization, speech, effective)
+        if language is None and segments:
+            language = heard
         repo.set_effective(self.db, self.job_id, effective)
 
         # 10. validation (pass 8) -----------------------------------------------------
@@ -429,6 +433,8 @@ class Worker:
         effective["validation"] = validation
         repo.set_effective(self.db, self.job_id, effective)
         detail = f"{validation['needs_review']} passage(s) to review"
+        if validation["missing_speech"] and not segments:
+            detail = f"Speech detected in {validation['missing_speech']} place(s) but no words recognised"
         if validation["timing_fixes"]:
             detail += f"; {validation['timing_fixes']} timestamp(s) corrected"
         self._finish("validate", detail=detail)
@@ -543,7 +549,8 @@ class Worker:
             self._skip("retranscribe", resolved.recheck_skip_reason)
             return segments
         self._check_cancel()
-        recheck = Recheck(segments, language, resolved, reader.duration)
+        gaps = missing_speech([], speech) if not segments else ()
+        recheck = Recheck(segments, language, resolved, reader.duration, gaps=gaps)
         if not recheck.targets:
             effective["recheck"] = {"enabled": True, "targets": 0}
             self._start("retranscribe")
@@ -647,6 +654,15 @@ def _alignment_key(model_id: str, segments: list[TSegment]) -> str:
     for seg in segments:
         digest.update(f"{seg.start:.3f}|{seg.end:.3f}|{seg.text}|{len(seg.words)}\n".encode())
     return digest.hexdigest()[:16]
+
+
+def _detected_language(pairs) -> str | None:
+    """Language Whisper detected over most of the recording, words or not."""
+    weights: Counter[str] = Counter()
+    for chunk, result in pairs:
+        if result.language:
+            weights[result.language] += chunk.owned_end - chunk.owned_start
+    return weights.most_common(1)[0][0] if weights else None
 
 
 def _dominant_language(pairs) -> str | None:

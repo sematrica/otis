@@ -222,3 +222,44 @@ def test_maximum_accuracy_pipeline_and_on_demand_recheck(fw_model_dir, diarizati
             print("no alternative wording was recorded on this recording")
     finally:
         service.shutdown()
+
+
+def test_speech_missed_by_the_first_pass_is_recovered_with_acoustic_evidence(fw_model_dir, alignment_dir, jfk_path,
+                                                                             tmp_path):
+    """An empty first pass over real speech (as when the recogniser returns
+    nothing): Maximum Accuracy re-transcribes the detected speech and keeps a
+    wording only if it beats "nothing was said" by the decision margin."""
+    from verbatim_engine.jobs.options import normalize_options, resolve
+    from verbatim_engine.metrics.wer import word_error_rate
+    from verbatim_engine.models.manager import ModelManager
+    from verbatim_engine.paths import EnginePaths
+    from verbatim_engine.storage.db import Database
+    from verbatim_engine.verify.quality import build_speech_map, missing_speech
+    from verbatim_engine.verify.recheck import Recheck
+
+    from tests.test_stage2_models import _install
+
+    paths = EnginePaths.create(tmp_path / "data")
+    db = Database(paths.db_path)
+    models = ModelManager(db, paths)
+    _install(models, "alignment/en-conformer-small", alignment_dir)
+    resolved = resolve(normalize_options({"backend": "faster-whisper", "model_path": str(fw_model_dir),
+                                          "mode": "maximum", "language": "en"}), models)
+    wav = tmp_path / "jfk.wav"
+    extract_audio(jfk_path, wav)
+    with WavReader(wav) as reader:
+        gaps = missing_speech([], build_speech_map(reader, None))
+        assert gaps and gaps[0]["start"] < 1.0
+        recheck = Recheck([], "en", resolved, reader.duration, gaps=gaps)
+        assert recheck.targets and all(t.gap for t in recheck.targets)
+        recheck.decode(reader, tmp_path / "recheck.jsonl")
+        result = recheck.finish(reader)
+    db.close()
+    print(result.counts, [s.text for s in result.segments])
+    assert result.counts["recovered"] >= 1
+    assert all(any(f["type"] == "recovered_speech" for f in s.flags) for s in result.segments)
+    assert all(f["margin"] >= DECISION_MARGIN for s in result.segments for f in s.flags if f["type"] == "recovered_speech")
+    # Stretches shorter than the missing-speech minimum (1 s) are not targeted:
+    # on JFK, "ask not what" stays untranscribed (3 of 22 words).
+    text = " ".join(s.text for s in result.segments)
+    assert word_error_rate(JFK, text).rate < 0.25

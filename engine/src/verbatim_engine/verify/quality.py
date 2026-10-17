@@ -276,21 +276,28 @@ def analyse(segments: list[TSegment], speech: SpeechMap | None, *, missing: bool
     if missing and speech is not None:
         found = flag_missing_speech(segments, speech)
         if found:
-            counts["missing_speech"] = found
+            counts["missing_speech"] = len(found)
     return counts
 
 
-def flag_missing_speech(segments: Sequence[TSegment], speech: SpeechMap) -> int:
-    """Flag detected speech that no word covers, on the segment before it
-    (segments sorted by start). Returns the number of stretches found."""
-    if not segments:
-        return 0
+def missing_speech(segments: Sequence[TSegment], speech: SpeechMap) -> list[dict[str, Any]]:
+    """Detected speech that no word covers: stretches of at least
+    :data:`MISSING_SPEECH_SECONDS`, with their detectors and a severity."""
     covered = [(a - WORD_COVER_PAD, b + WORD_COVER_PAD) for seg in segments for a, b in _word_spans(seg)]
-    starts = [seg.start for seg in segments]
     gaps = speech.uncovered(covered, MISSING_SPEECH_SECONDS)
     for gap in gaps:
-        index = int(np.searchsorted(starts, gap["start"])) - 1
-        owner = segments[max(0, index)]
-        severity = "high" if len(gap["detectors"]) == 2 or gap["end"] - gap["start"] >= 3.0 else "medium"
-        owner.flags.append({"type": "missing_speech", "severity": severity, **gap})
-    return len(gaps)
+        gap["severity"] = "high" if len(gap["detectors"]) == 2 or gap["end"] - gap["start"] >= 3.0 else "medium"
+    return gaps
+
+
+def flag_missing_speech(segments: Sequence[TSegment], speech: SpeechMap) -> list[dict[str, Any]]:
+    """Flag detected speech that no word covers, on the segment before it
+    (segments sorted by start). Returns the stretches found; without any
+    segment they are only returned (the transcript is empty, not silent)."""
+    gaps = missing_speech(segments, speech)
+    if segments:
+        starts = [seg.start for seg in segments]
+        for gap in gaps:
+            owner = segments[max(0, int(np.searchsorted(starts, gap["start"])) - 1)]
+            owner.flags.append({"type": "missing_speech", **gap})
+    return gaps

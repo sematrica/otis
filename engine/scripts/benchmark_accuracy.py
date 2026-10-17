@@ -180,7 +180,7 @@ def measure(service: EngineService, project_id: str, job: dict, item) -> dict:
                  "segment_flags": [f["type"] for f in seg["flags"]]}
                 for w, seg, ok in word_correctness(segments, item.reference)
             ]
-    if item.turns is not None and transcript.get("speakers"):
+    if item.turns is not None:  # an empty transcript misses all reference speech
         out["der"] = round(diarization_error_rate(item.turns, speaker_spans(transcript), collar=0.25).der, 4)
         out["speakers_found"] = len(transcript["speakers"])
     if item.words is not None:

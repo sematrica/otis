@@ -55,14 +55,15 @@ class RecheckResult:
 
 class Recheck:
     def __init__(self, segments: list[TSegment], language: str | None, resolved, duration: float, *,
-                 indices: set[int] | None = None, protected: set[int] | None = None):
+                 indices: set[int] | None = None, protected: set[int] | None = None,
+                 gaps: Sequence[dict[str, Any]] = ()):
         self.segments = segments
         self.language = language
         self.resolved = resolved
         self.duration = duration
         self.protected = protected or set()
         self.skipped: list[tuple[int, str]] = []
-        self.targets = select_targets(segments, indices, self.skipped)
+        self.targets = select_targets(segments, indices, self.skipped, gaps)
         self.windows = plan_windows(self.targets, duration)
         self.words = sorted((w for s in segments for w in s.words), key=lambda w: w.start)
         self.decodes: list[tuple[int, str, DecodeOptions, str]] = []
@@ -149,7 +150,8 @@ class Recheck:
                     comparison = compare(scorer, scorer.emissions(reader.read(sw.start, sw.end)), candidates,
                                          left=sw.left, right=sw.right)
                 decisions.append(Decision(target, candidates, timed, comparison))
-        segments, changed_idx, counts, replaced = apply_decisions(self.segments, decisions, protected=self.protected)
+        segments, changed_idx, counts, replaced = apply_decisions(self.segments, decisions, protected=self.protected,
+                                                                   language=self.language)
         changed = [segments[i] for i in sorted(changed_idx)]
         if changed and model is not None:
             apply_alignment(changed, WordAligner(model).align(reader, changed, self.language))

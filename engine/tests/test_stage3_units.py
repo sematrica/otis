@@ -396,3 +396,19 @@ def test_checking_a_passage_again_replaces_the_earlier_outcome():
     again, _, _, _ = apply_decisions(again, [_decision(again[0], "unresolved", "diane on new jersey")])
     types = [f["type"] for f in again[0].flags]
     assert types.count("alternatives") == 1 and types.count("rechecked") == 1
+
+
+from verbatim_engine.verify.quality import missing_speech  # noqa: E402
+from verbatim_engine.verify.validate import validate as validate_transcript  # noqa: E402
+
+
+def test_an_empty_transcript_over_speech_is_not_reported_as_silence():
+    speech = _speech(30.0, (2.0, 2.4), (18.0, 19.5), (28.0, 30.0))
+    segments, summary = validate_transcript([], speech, 30.0)
+    assert segments == [] and summary["missing_speech"] == 2  # the 0.4 s stretch is below the minimum
+    assert summary["untranscribed"][0]["start"] == pytest.approx(18.0, abs=0.05)
+    assert summary["untranscribed_seconds"] == pytest.approx(3.5, abs=0.1)
+    # Maximum Accuracy re-checks those stretches although no segment carries them
+    targets = select_targets([], gaps=missing_speech([], speech))
+    assert [(round(t.start), round(t.end), t.gap) for t in targets] == [(18, 20, True), (28, 30, True)]
+    assert select_targets([], indices=set(), gaps=missing_speech([], speech)) == []  # not on demand

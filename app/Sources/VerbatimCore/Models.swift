@@ -413,6 +413,18 @@ public struct Transcript: Codable, Hashable, Sendable {
         segments = try c.decode([Segment].self, forKey: .segments)
     }
 
+    /// Start times of detected speech that no word covers, as found by the
+    /// final validation of the job that produced this transcript (listed up to
+    /// a limit; ``untranscribedSpeechCount`` counts them all).
+    public var untranscribedSpeech: [Double] {
+        guard case .array(let items)? = effective?.lookup("validation")?.lookup("untranscribed") else { return [] }
+        return items.compactMap { $0.lookup("start")?.doubleValue }
+    }
+
+    public var untranscribedSpeechCount: Int {
+        Int(effective?.lookup("validation")?.lookup("missing_speech")?.doubleValue ?? 0)
+    }
+
     /// Any speaker by id, including ones the user merged away.
     public func speaker(_ id: Int?) -> Speaker? {
         guard let id else { return nil }

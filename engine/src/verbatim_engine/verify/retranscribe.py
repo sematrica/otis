@@ -101,10 +101,17 @@ def _overlaps_another(segments: Sequence[TSegment], i: int) -> bool:
 
 
 def select_targets(segments: Sequence[TSegment], indices: set[int] | None = None,
-                   skipped: list[tuple[int, str]] | None = None) -> list[Target]:
+                   skipped: list[tuple[int, str]] | None = None,
+                   gaps: Sequence[dict[str, Any]] = ()) -> list[Target]:
     """Doubtful passages (or exactly ``indices``, when the user asks).
-    Passages in overlapping speech are left out and listed in ``skipped``."""
+    Passages in overlapping speech are left out and listed in ``skipped``.
+    ``gaps`` are stretches of untranscribed speech not attached to a segment
+    (the transcript is empty)."""
     targets: list[Target] = []
+    if indices is None:
+        for gap in gaps:
+            if LEVELS.get(gap.get("severity"), 0) >= LEVELS[TARGET_FLAGS["missing_speech"]]:
+                targets.append(Target(float(gap["start"]), float(gap["end"]), None, ["missing_speech"]))
     for i, seg in enumerate(segments):
         reasons: list[str] = []
         hallucination = False
@@ -270,8 +277,8 @@ def _distinct_wordings(decision: Decision) -> int:
     return len({c.key for c in decision.candidates if c.key or decision.target.gap})
 
 
-def apply_decisions(segments: list[TSegment], decisions: Sequence[Decision], *, protected: set[int] | None = None
-                    ) -> tuple[list[TSegment], set[int], dict[str, int], dict[int, TSegment]]:
+def apply_decisions(segments: list[TSegment], decisions: Sequence[Decision], *, protected: set[int] | None = None,
+                    language: str | None = None) -> tuple[list[TSegment], set[int], dict[str, int], dict[int, TSegment]]:
     """Apply pass-7 decisions. Returns the new segment list, the indices (in
     it) of segments whose words changed or were added, counts per outcome, and
     the replacement of each re-worded segment by its original index.
@@ -333,7 +340,7 @@ def apply_decisions(segments: list[TSegment], decisions: Sequence[Decision], *, 
             else:
                 new = TSegment(start=new_words[0].start, end=new_words[-1].end,
                                text="".join(w.text for w in new_words).strip(), words=new_words,
-                               language=segments[0].language if segments else None)
+                               language=segments[0].language if segments else language)
                 new.flags.append({"type": "recovered_speech", "severity": "medium", "gap": [target.start, target.end],
                                   "chosen": source, "margin": comparison.margin, "candidates": payload})
                 inserted.append(new)
