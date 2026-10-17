@@ -59,7 +59,7 @@ timeout; writes are short transactions.
 | 3 | Speech Recognition Engine | 1 | `engine/src/verbatim_engine/asr/` (backend protocol, faster-whisper, mlx-whisper, merge) |
 | 4 | Speaker Diarization Engine | 2 | `engine/src/verbatim_engine/diarization/` (segmentation, embeddings, clustering, timeline, word/segment assignment) |
 | 5 | Word Alignment Engine | 2 | `engine/src/verbatim_engine/alignment/` (CTC models, Viterbi, aligner, boundary refinement) |
-| 6 | Transcript Verification Engine | 3 | `engine/src/verbatim_engine/verification/` (planned) |
+| 6 | Transcript Verification Engine | 3 | `engine/src/verbatim_engine/verify/` (quality analysis, re-transcription, acoustic comparison, validation, review priority), `alignment/score.py` (CTC forward scoring), `llm/` (optional AI review: providers, prompts, validation, runs) |
 | 7 | Transcript Editor | 2 | `engine/src/verbatim_engine/transcript/` (data model, build, corrections + undo) and `app/Sources/Verbatim/Workspace/` |
 | 8 | Export Manager | 1 (TXT) / 4 | `engine/src/verbatim_engine/export/` |
 | 9 | Model Manager | 1–2 / 5 | `engine/src/verbatim_engine/models/` (HuggingFace and pinned-URL downloads) |
@@ -150,10 +150,81 @@ Every ASR backend reports what it can actually do, and the job records the
    (energy) or, in connected speech, a per-model split of the gap. Segments whose
    alignment is implausible keep Whisper's times and are flagged. Results are
    appended per group to `alignment.jsonl` (resume).
-9. **Finalize** — each word gets the speaker active for most of its duration;
-   segments are split where the speaker changes; doubtful attributions are
-   flagged; speakers are numbered by first appearance; the transcript, its
-   immutable original copy and the speakers are written in one transaction.
+9. **Speakers to words** — each word gets the speaker active for most of its
+   duration; segments are split where the speaker changes; doubtful
+   attributions are flagged.
+10. **Quality analysis (pass 5)** — a speech map of the recording on a 20 ms
+    grid (Silero VAD at fine settings, plus the diarization's speech activity)
+    and per-segment detectors flag unclear speech, possible hallucinations,
+    repetitions and untranscribed speech (rules below). Each flag has a
+    severity; a segment's review priority is its most severe open flag.
+11. **Targeted re-transcription (pass 6, Maximum Accuracy)** — passages with a
+    medium or high doubt are decoded again from the original 16 kHz recording
+    with 2 s of context on each side (windows merged up to 28 s): with the
+    preceding 48 words as prompt and beam ≥ 5 at temperature 0 ("context"),
+    without prompt ("plain"), and, for possible hallucinations, with VAD and
+    Whisper's hallucination-silence threshold ("vad"). Passages that overlap
+    another speaker's segment by ≥ 0.25 s are not re-worded (recorded as not
+    re-checked): acoustic evidence cannot separate simultaneous voices. Decodes
+    are appended to `recheck.jsonl` (resume).
+12. **Acoustic comparison (pass 7)** — every candidate wording (first pass and
+    each decode, cut to the passage by aligning the decode with the
+    transcript's own words) is scored as log P(words | audio) with the CTC
+    forward algorithm on the word-alignment model's emissions, between the same
+    anchor words, alongside "nothing was said" (rules below). Changed segments
+    are re-aligned, given speakers again and re-analysed.
+13. **Validation (pass 8)** — timestamps clamped to the recording and to their
+    words, word order checked, boundary duplicates flagged, untranscribed speech
+    recomputed on the final transcript, review counts summarised. Nothing is
+    deleted or re-worded here; unresolved doubts stay on the segments.
+14. **Finalize** — speakers are numbered by first appearance; the transcript,
+    its immutable original copy and the speakers are written in one transaction.
+
+### Quality rules (pass 5; heuristics, thresholds in `verify/quality.py`)
+
+| Flag | Rule | Severity |
+|------|------|----------|
+| `low_confidence` | average log-probability < −1.0; or ≥ 30 % (and ≥ 2) of the words with probability < 0.5; or the decoder fell back to sampling | high below −1.3 or with half the words uncertain, else medium |
+| `possible_hallucination` | < 20 % of the word time over detected speech; alignment rejected because the text does not match; a repetition loop or compression ratio > 2.4; no-speech probability > 0.6; a phrase Whisper is known to produce on silence | high for the first three, low for a known phrase alone, else medium |
+| `repeated_words` | an immediately repeated 1–4-word sequence (often genuine) | low |
+| `missing_speech` | ≥ 1 s of VAD speech no word covers (0.25 s margin around words) | high with both detectors or ≥ 3 s, else medium |
+
+### Acoustic comparison rules (pass 7; `verify/compare.py`)
+
+* The first-pass wording is kept unless another candidate scores at least
+  3 nats higher, **plus 3 nats for every word the candidate has fewer**: CTC
+  scoring favours dropping words the model is unsure of (measured on AMI).
+* Wordings within the margin are kept as **alternatives** for the user;
+  agreement between decodes is never taken as evidence.
+* If "nothing was said" explains the audio better than every wording by the
+  margin, the passage is flagged as a possible hallucination (**words are never
+  removed**). Over detected speech (≥ 50 % of the words) this is a medium doubt,
+  since the acoustic model may not recognise overlapping, distant or telephone
+  speech; elsewhere it is high.
+* Untranscribed speech gets words only if they beat "nothing" by the margin.
+* User-corrected passages are never re-worded; a better-supported wording is
+  offered as an alternative. Every outcome is recorded (`rechecked` flag with
+  the scores of all candidates).
+* Without an acoustic model for the language, differing wordings are listed for
+  review and nothing changes.
+
+The margin comes from measurements on real speech: single-word substitutions,
+insertions and repetitions of the true text always scored lower than the truth
+(by ≥ 3.5 nats on JFK and LibriSpeech); deleting a short word scored up to
+1.2 nats better.
+
+### Optional AI review (`llm/`)
+
+A language model may flag suspicious passages, suggest punctuation, point out
+inconsistent spellings of a term and suggest passages to re-transcribe. It never
+changes the transcript: suggestions are validated (a punctuation suggestion may
+not change words; a terminology suggestion must name a spelling that occurs in
+the passage), stored with the run's every request and response, and applied
+only when the user accepts one — as an undoable edit. "Re-transcribe" starts an
+acoustic re-check, so the audio decides, not the language model. Providers sit
+behind one interface: Ollama (local, `/api/chat` with a JSON schema) and OpenAI
+(Chat Completions with structured output). Local endpoints are the default; a
+remote endpoint needs HTTPS and an explicit permission per review.
 
 ### Speaker assignment thresholds (heuristics, not calibrated probabilities)
 
@@ -176,10 +247,14 @@ states in order. The AI output is kept three ways: the `original_transcripts`
 copy, `original_text`/`original_speaker_id` per segment and `original_text` per
 word. Editing text re-derives the segment's words so word timings stay valid.
 
-Hallucination guards already in Stage 1: VAD, temperature fallback with
+Stage 3 corrections: choose a recorded wording, mark passages reviewed, remove
+a passage, and re-check chosen passages on demand (a job of kind `recheck`
+using the audio extracted by the transcription; its outcome is one undoable
+correction).
+
+Hallucination guards from Stage 1 remain: VAD, temperature fallback with
 compression-ratio / log-probability / no-speech thresholds, prompt reset on
-high temperature. Per-segment `avg_logprob`, `no_speech_prob`,
-`compression_ratio`, and `temperature` are stored for Stage 3 quality analysis.
+high temperature.
 
 Progress reporting never invents numbers: a stage reports a fraction only when it
 has a real numerator and denominator; otherwise the UI shows an indeterminate
@@ -192,7 +267,11 @@ shown only after enough work has been observed.
 |------|-------|----------|------------------|
 | Fast | Whisper Small | greedy (beam 1) | speakers when the model is installed; Whisper word times |
 | Balanced | Whisper Large-v3 Turbo | beam 5 where supported | speakers and forced alignment when installed |
-| Maximum Accuracy | Whisper Large-v3 | beam 5 / best-of 5 where supported; float32 on CPU | as Balanced. Multi-pass verification (passes 5–8) arrives in Stage 3; the UI says so. |
+| Maximum Accuracy | Whisper Large-v3 | beam 5 / best-of 5 where supported; float32 on CPU | as Balanced, plus re-transcription of doubtful passages compared by acoustic evidence (passes 6–7) |
+
+Quality analysis (pass 5) and validation (pass 8) run in every mode, so every
+transcript shows its doubts. Re-checking can also be forced on or off per job
+(`recheck`).
 
 Speaker identification can be required, turned off or left automatic per job;
 "required" refuses to start without the model instead of silently skipping.
@@ -238,7 +317,14 @@ model loading always uses local files only. The storage folder is configurable
 * All working files live under the app's data directory
   (`~/Library/Application Support/Verbatim`), per job, and are removed with the
   project.
-* API keys (Stage 3 LLM providers) will be stored in the macOS Keychain.
+* AI review is optional and off until configured. Nothing is sent to a cloud
+  service without explicit authorization: the OpenAI provider is disabled until
+  the user allows it in Settings, and every review of a project with a remote
+  endpoint asks again before any text leaves the Mac. Remote endpoints must use
+  HTTPS; local (loopback) endpoints are the default. The OpenAI API key is kept
+  in the macOS Keychain and passed to the engine only for the request that
+  needs it; it is never stored by the engine or written to logs. Audio is never
+  sent: only transcript text, in batches the run records.
 
 ## 9. Known risks and open questions
 
@@ -285,3 +371,15 @@ model loading always uses local files only. The storage folder is configurable
     reference used as a `Binding` setter; closures are used instead. The UI still
     has no automated interaction tests (it is exercised through the model layer,
     the packaged-app self-test and window snapshots).
+13. **Acoustic evidence has limits.** The English acoustic model (Conformer-CTC
+    Small) does not recognise espeak's synthetic voice and is weak on overlapping,
+    far-field and narrow-band speech; it cannot tell a foreground speaker from
+    background speech. Re-checking therefore never removes words, skips
+    overlapping passages and lowers its doubt over detected speech. Outside
+    English, acoustic comparison needs the MMS model (non-commercial licence).
+14. **Review flags are heuristics.** Their recall and precision are measured by
+    the accuracy benchmark (Stage 3 report), not guaranteed; a passage without a
+    flag is not certified correct.
+15. **AI review was tested with a small local model only** (CI pulls a 0.5 B
+    model into Ollama); the OpenAI provider is tested against Ollama's
+    OpenAI-compatible endpoint, not against OpenAI's service.

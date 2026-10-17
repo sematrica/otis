@@ -4,26 +4,34 @@ Accurate, local transcription of videos and podcasts for macOS on Apple
 Silicon. A native SwiftUI app drives a Python engine that runs Whisper
 (faster-whisper on the CPU, or MLX on the Apple GPU) entirely on your Mac.
 
-**Status: Stage 2 (Speaker Intelligence).** Everything from Stage 1 (local
-media import, real Whisper transcription, persistent projects and jobs with
-cancel/resume/crash recovery, TXT export, explicit model management) plus:
+**Status: Stage 3 (Verification and accuracy).** Everything from Stages 1–2
+(local media import, real Whisper transcription, persistent jobs with
+cancel/resume/crash recovery, speakers, word alignment, the three-panel
+workspace, corrections with undo/redo, TXT export) plus:
 
-* **Speakers** — who spoke when, found on your Mac (pyannote's segmentation and
-  WeSpeaker models on ONNX Runtime): the number of speakers is estimated (or
-  given), overlapping speech is detected, segments are split where the speaker
-  changes, and doubtful attributions are flagged. Speakers stay anonymous
-  ("Speaker 1") until you name them.
-* **Word alignment** — precise word times by CTC forced alignment (NeMo
-  Conformer-CTC for English, MMS for 1,100+ languages); Whisper's times are kept
-  and flagged where alignment is rejected.
-* **Three-panel workspace** — speakers | video | transcript; the playing segment
-  and word are highlighted; clicking a segment or word seeks the video.
-* **Corrections with undo/redo** — rename, merge and add speakers; reassign,
-  split, merge and edit segments; mark passages uncertain. The AI-generated
-  transcript is kept unchanged alongside.
+* **Quality analysis on every transcript** — unclear speech, possible
+  hallucinations, repetitions and speech that no word covers are flagged with a
+  severity; the Review menu lists the passages that need a look, most severe
+  first, and uncertain words are coloured.
+* **Maximum Accuracy re-checks doubtful passages** — they are transcribed again
+  from the original recording with context and other settings, and the
+  wordings are compared by acoustic evidence (an independent CTC model scores
+  each wording against the audio). A wording replaces the first pass only with
+  a clear margin; close calls are kept as alternatives for you to choose; words
+  are never removed automatically. Any passage can also be re-checked on demand.
+* **Validation** — timestamps, word order, duplicates and untranscribed speech
+  are checked on the final transcript; unresolved doubts stay visible.
+* **Optional AI review** — a local model (Ollama) or, with your explicit
+  permission, OpenAI can flag suspicious passages, suggest punctuation, point
+  out inconsistent spellings and suggest passages to re-check. Nothing changes
+  until you accept a suggestion; every request and answer is recorded, and the
+  OpenAI key stays in the Keychain.
+* **Accuracy benchmark** — `engine/scripts/benchmark_accuracy.py` measures WER,
+  CER, DER, word-time error and flag quality on a reproducible corpus (real and
+  synthetic speech), with and without re-checking; CI runs it.
 
-Verification passes, YouTube import and the other export formats are later
-stages; see `docs/ARCHITECTURE.md` and `docs/STAGE2_REPORT.md`.
+YouTube import, the other export formats and search are later stages; see
+`docs/ARCHITECTURE.md` and `docs/STAGE3_REPORT.md`.
 
 ## Requirements
 
@@ -79,6 +87,9 @@ VERBATIM_TEST_SPEAKER_CORPUS=/tmp/speakers uv run pytest -m model
 uv run python scripts/benchmark_word_timing.py --whisper … --aligner nemo:…   # word-time accuracy
 uv run python scripts/evaluate_speaker_review.py --whisper … --diarization … \
     --alignment … --corpus /tmp/speakers                       # do review flags find wrong speakers?
+uv run python scripts/benchmark_accuracy.py --whisper … --diarization … --alignment … \
+    --speaker-corpus /tmp/speakers --interrupted --markdown results.md   # Stage 3 accuracy benchmark
+VERBATIM_TEST_OLLAMA_MODEL=qwen2.5:0.5b uv run pytest tests/test_stage3_llm.py   # AI review, local Ollama
 cd ../app && swift test                                        # macOS only
 ```
 
@@ -92,8 +103,8 @@ macOS runner, builds the app bundle and smoke-tests it.
 
 ```
 app/       Swift package: VerbatimCore (engine client, protocol types) and the SwiftUI app
-engine/    Python engine: media, audio, ASR, diarization, alignment, transcript corrections, jobs, storage, RPC, CLI
+engine/    Python engine: media, audio, ASR, diarization, alignment, verification, AI review, transcript corrections, jobs, storage, RPC, CLI
 shared/    protocol fixtures captured from a real engine run (decoded by Swift tests)
 scripts/   build_app.sh, smoke_test_app.sh, app_self_test.sh, dev_run.sh, verify_model_catalog.py
-docs/      ARCHITECTURE.md, ENGINE_PROTOCOL.md, STAGE1_REPORT.md, STAGE2_REPORT.md (results and limitations)
+docs/      ARCHITECTURE.md, ENGINE_PROTOCOL.md, STAGE1_REPORT.md … STAGE3_REPORT.md (results and limitations)
 ```
