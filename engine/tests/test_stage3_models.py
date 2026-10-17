@@ -111,3 +111,114 @@ def test_numbers_are_scored_by_their_spoken_form(english_scorer, timed_speech, t
     cardinal = _score(english_scorer, emissions, "it happened in one thousand nine hundred eighty four and cost five dollars")
     assert digits == pytest.approx(max(spelled, cardinal), abs=1e-6)  # the best reading is used
     assert english_scorer.score(emissions, ["it", "happened", "in", "≈"]) is None  # cannot be spelled
+
+
+# ----------------------------------------------------------------------------- full pipeline
+
+
+def _wait(service, job_id: str, timeout: float = 1500) -> dict:
+    import time
+
+    from verbatim_engine.storage import repo
+
+    deadline = time.monotonic() + timeout
+    while repo.get_job(service.db, job_id)["status"] not in ("completed", "failed", "cancelled", "interrupted"):
+        assert time.monotonic() < deadline, "job did not finish in time"
+        time.sleep(0.2)
+    return repo.get_job(service.db, job_id)
+
+
+def test_maximum_accuracy_pipeline_and_on_demand_recheck(fw_model_dir, diarization_dir, alignment_dir,
+                                                         speaker_corpus, data_dir):
+    from verbatim_engine.paths import EnginePaths
+    from verbatim_engine.rpc.service import EngineService
+    from verbatim_engine.storage import repo
+    from verbatim_engine.verify.review import LEVELS
+
+    from tests.test_stage2_models import _install
+
+    service = EngineService(EnginePaths.create(data_dir), lambda *_: None)
+    _install(service.models, "diarization/pyannote-wespeaker", diarization_dir)
+    _install(service.models, "alignment/en-conformer-small", alignment_dir)
+    service.start()
+    call = service.methods()
+    try:
+        project = service.projects_create({"path": str(speaker_corpus / "sample.wav"), "title": "Call"})
+        pid = project["id"]
+        options = {"backend": "faster-whisper", "model_path": str(fw_model_dir), "mode": "maximum",
+                   "diarize": True, "align": True, "language": "en"}
+        job = _wait(service, service.jobs_start({"project_id": pid, "options": options})["id"])
+        assert job["status"] == "completed", job["error"]
+        stages = {s["stage"]: s for s in job["stages"]}
+        assert [s["stage"] for s in job["stages"]][-4:] == ["quality", "retranscribe", "validate", "finalize"]
+        assert all(stages[k]["status"] == "completed" for k in ("quality", "retranscribe", "validate"))
+        effective = job["effective"]
+        assert effective["recheck"]["enabled"] is True
+        assert effective["recheck"].get("acoustic_model", {"id": None})["id"] in (None, "alignment/en-conformer-small")
+        print({"quality": effective["quality"]["flags"], "recheck": effective["recheck"],
+               "validation": effective["validation"]})
+        transcript = repo.get_transcript(service.db, pid, include_words=True)
+        segments = transcript["segments"]
+        assert segments and all("review_priority" in s for s in segments)
+        # "needs review" means a medium or high priority (the app's review list)
+        needs = sum(s["review_priority"] in ("medium", "high") for s in segments)
+        assert needs == effective["validation"]["needs_review"]
+        assert all(s["review_priority"] in (None, *LEVELS) for s in segments)
+        starts = [s["start"] for s in segments]
+        assert starts == sorted(starts)
+        for seg in segments:
+            assert all(seg["start"] - 1e-6 <= w["start"] <= w["end"] <= seg["end"] + 1e-6 for w in seg["words"])
+
+        # on-demand re-check of two passages, one of them corrected by the user
+        candidates = [s for s in segments if len(s["words"]) >= 4]
+        assert len(candidates) >= 2
+        edited, other = candidates[0], candidates[-1]
+        corrected = edited["text"].strip() + " indeed"
+        call["transcript.editText"]({"project_id": pid, "segment_id": edited["id"], "text": corrected})
+        before = {s["id"]: s for s in repo.get_transcript(service.db, pid)["segments"]}
+        recheck = call["transcript.recheck"]({"project_id": pid, "segment_ids": [edited["id"], other["id"]]})
+        assert recheck["kind"] == "recheck"
+        recheck = _wait(service, recheck["id"])
+        assert recheck["status"] == "completed", recheck["error"]
+        assert [s["stage"] for s in recheck["stages"]] == ["prepare", "retranscribe", "finalize"]
+        print("re-check:", recheck["effective"]["recheck"])
+        after = {s["id"]: s for s in repo.get_transcript(service.db, pid)["segments"]}
+        assert after[edited["id"]]["text"].strip() == corrected  # a user's correction is never re-worded
+        for sid in (edited["id"], other["id"]):
+            results = [f for f in after[sid]["flags"] if f["type"] == "rechecked"]
+            assert len(results) == 1, after[sid]["flags"]
+            print(after[sid]["text"], "->", results[0])
+        history = repo.get_transcript(service.db, pid)["history"]
+        assert history["undo_summary"].startswith("Re-check 2 passages")
+        undone = call["transcript.undo"]({"project_id": pid})["transcript"]
+        restored = {s["id"]: s for s in undone["segments"]}
+        for sid in (edited["id"], other["id"]):
+            assert restored[sid]["text"] == before[sid]["text"] and restored[sid]["flags"] == before[sid]["flags"]
+        call["transcript.redo"]({"project_id": pid})
+
+        # reviewing and removing passages are undoable corrections
+        reviewed = call["transcript.markReviewed"]({"project_id": pid, "segment_ids": [other["id"]]})["transcript"]
+        flags = next(s for s in reviewed["segments"] if s["id"] == other["id"])["flags"]
+        assert any(f["type"] == "reviewed" for f in flags)
+        assert next(s for s in reviewed["segments"] if s["id"] == other["id"])["review_priority"] is None
+        count = len(reviewed["segments"])
+        removed = call["transcript.deleteSegment"]({"project_id": pid, "segment_id": other["id"]})["transcript"]
+        assert len(removed["segments"]) == count - 1
+        assert len(call["transcript.undo"]({"project_id": pid})["transcript"]["segments"]) == count
+
+        # choosing a recorded wording, where re-checking left one
+        current = repo.get_transcript(service.db, pid)["segments"]
+        offered = [(s, c) for s in current if not s["text_edited"] for f in s["flags"]
+                   if f["type"] in ("alternatives", "retranscribed") and not f.get("resolved")
+                   for c in f.get("candidates", []) if c["text"] and c["text"] != s["text"].strip()]
+        if offered:
+            seg, cand = offered[0]
+            chosen = call["transcript.chooseWording"]({"project_id": pid, "segment_id": seg["id"],
+                                                       "source": cand["source"]})["transcript"]
+            now = next(s for s in chosen["segments"] if s["id"] == seg["id"])
+            assert " ".join(now["text"].split()) == " ".join(cand["text"].split())
+            assert all(f.get("resolved") for f in now["flags"] if f["type"] in ("alternatives", "retranscribed"))
+        else:
+            print("no alternative wording was recorded on this recording")
+    finally:
+        service.shutdown()

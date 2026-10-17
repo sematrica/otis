@@ -99,7 +99,7 @@ def compare(
             distinct[cand.key] = None if result is None else result.log_likelihood
     empty_result = scorer.score(emissions, [*left, *right])
     empty = None if empty_result is None else empty_result.log_likelihood
-    scores = [CandidateScore(c.source, " ".join(c.words), distinct[c.key]) for c in candidates]
+    scores = [CandidateScore(c.source, " ".join("".join(c.words).split()), distinct[c.key]) for c in candidates]
 
     first = distinct[candidates[0].key]
     # An empty alternative never replaces words: "nothing was said" is judged

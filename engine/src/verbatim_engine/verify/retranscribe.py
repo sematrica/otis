@@ -255,9 +255,15 @@ class Decision:
                 continue
             seen.add(cand.key)
             score = scores.get(cand.source)
-            out.append({"source": cand.source, "text": " ".join(w.strip() for w in cand.words).strip(),
+            out.append({"source": cand.source, "text": join_words(cand.words),
                         "score": None if score is None else round(score, 3)})
         return out
+
+
+def join_words(words: Sequence[str]) -> str:
+    """Text of decoded words, which carry their own leading spaces (none
+    between words in languages written without spaces)."""
+    return " ".join("".join(words).split())
 
 
 def _distinct_wordings(decision: Decision) -> int:
@@ -279,9 +285,14 @@ def apply_decisions(segments: list[TSegment], decisions: Sequence[Decision], *, 
     inserted: list[TSegment] = []
     for decision in decisions:
         target, comparison = decision.target, decision.comparison
-        first_text = " ".join(decision.candidates[0].words).strip()
+        first_text = join_words(decision.candidates[0].words)
         payload = decision.candidates_payload()
         seg = segments[target.segment] if target.segment is not None else None
+        earlier = None
+        if seg is not None:
+            # A passage checked again: the new comparison replaces the old one.
+            earlier = next((f for f in seg.flags if f.get("type") == "retranscribed"), None)
+            seg.flags[:] = [f for f in seg.flags if f.get("type") not in ("rechecked", "alternatives")]
         if comparison is None or comparison.decision == "unscorable":
             outcome = "not_comparable"
             reason = "no acoustic model for this language" if comparison is None else "words the acoustic model cannot spell"
@@ -310,10 +321,12 @@ def apply_decisions(segments: list[TSegment], decisions: Sequence[Decision], *, 
                     end=max(seg.end, new_words[-1].end) if new_words else seg.end,
                     text="".join(w.text for w in new_words).strip(),
                     words=new_words, language=seg.language, chunk_index=seg.chunk_index,
-                    flags=[f for f in seg.flags if f.get("type") not in RECOMPUTED_FLAGS],
+                    flags=[f for f in seg.flags if f.get("type") not in RECOMPUTED_FLAGS | {"retranscribed"}],
                     speaker=seg.speaker, speaker_confidence=seg.speaker_confidence,
                 )
-                updated.flags.append({"type": "retranscribed", "severity": "low", "first_pass": first_text,
+                # "first_pass" stays the recogniser's original wording
+                original = earlier["first_pass"] if earlier is not None else first_text
+                updated.flags.append({"type": "retranscribed", "severity": "low", "first_pass": original,
                                       "chosen": source, "margin": comparison.margin, "candidates": payload})
                 replaced[target.segment] = updated
                 counts["replaced"] += 1
@@ -335,7 +348,7 @@ def apply_decisions(segments: list[TSegment], decisions: Sequence[Decision], *, 
                 flag = {"type": "possible_hallucination", "reasons": []}
                 seg.flags.append(flag)
             flag["severity"] = "high"
-            flag["reasons"] = [*flag.get("reasons", []), "no_acoustic_support"]
+            flag["reasons"] = [*(r for r in flag.get("reasons", []) if r != "no_acoustic_support"), "no_acoustic_support"]
             flag["acoustic_margin"] = comparison.margin
             seg.flags.append({"type": "rechecked", "result": "no_acoustic_support", "candidates": payload})
             counts["no_acoustic_support"] += 1

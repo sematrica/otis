@@ -361,3 +361,38 @@ def test_overlapping_speech_is_not_re_worded():
     targets = select_targets([a, b, c], skipped=skipped)
     assert [t.segment for t in targets] == [2]
     assert [i for i, _ in skipped] == [0, 1] and skipped[0][1] == "overlapping speech"
+
+
+from verbatim_engine.verify.compare import CandidateScore, Comparison  # noqa: E402
+from verbatim_engine.verify.retranscribe import Decision, apply_decisions  # noqa: E402
+
+
+def _decision(seg: TSegment, decision: str, *texts: str) -> Decision:
+    cands = [Candidate("first_pass", [w.text for w in seg.words])] + [
+        Candidate(f"alt{i}", [" " + t for t in text.split()]) for i, text in enumerate(texts)]
+    timed = [list(seg.words)] + [
+        [Word(seg.start + 0.4 * j, seg.start + 0.4 * j + 0.3, " " + t, 0.8) for j, t in enumerate(text.split())]
+        for text in texts]
+    scores = [CandidateScore(c.source, " ".join(c.words), -10.0) for c in cands]
+    comparison = Comparison(decision, 1 if decision == "replace" else 0, 8.0, scores, -50.0,
+                            [1] if decision == "unresolved" else [])
+    return Decision(Target(seg.start, seg.end, 0), cands, timed, comparison)
+
+
+def test_checking_a_passage_again_replaces_the_earlier_outcome():
+    seg = _seg(0.0, "daddy and a new jersey".split())
+    segments, _, _, _ = apply_decisions([seg], [_decision(seg, "unresolved", "diane and new jersey")])
+    assert [f["type"] for f in segments[0].flags].count("alternatives") == 1
+    segments, _, _, replaced = apply_decisions(segments, [_decision(segments[0], "replace", "diane and new jersey")])
+    once = replaced[0]
+    assert once.text == "diane and new jersey"
+    assert not any(f["type"] in ("alternatives", "rechecked") for f in once.flags)
+    segments, _, _, replaced = apply_decisions([once], [_decision(once, "replace", "diane in new jersey")])
+    twice = replaced[0]
+    retranscribed = [f for f in twice.flags if f["type"] == "retranscribed"]
+    assert len(retranscribed) == 1
+    assert retranscribed[0]["first_pass"] == "daddy and a new jersey"  # the recogniser's original wording
+    again, _, _, _ = apply_decisions([twice], [_decision(twice, "unresolved", "diane on new jersey")])
+    again, _, _, _ = apply_decisions(again, [_decision(again[0], "unresolved", "diane on new jersey")])
+    types = [f["type"] for f in again[0].flags]
+    assert types.count("alternatives") == 1 and types.count("rechecked") == 1

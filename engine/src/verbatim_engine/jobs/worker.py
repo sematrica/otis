@@ -300,7 +300,8 @@ class Worker:
                           "original_text": w.text} for w in seg.words]
             updates[ids[i]] = {"text": seg.text, "start": seg.start, "end": seg.end, "flags": seg.flags, "words": words}
         n = len(touched)
-        summary = f"Re-check {n} passage{'s' if n != 1 else ''}: {summary_text(result.counts, True)}"
+        has_model = result.info["acoustic_model"] is not None
+        summary = f"Re-check {n} passage{'s' if n != 1 else ''}: {summary_text(result.counts, has_model)}"
         TranscriptEditor(self.db).apply_recheck(project["id"], self.job_id, updates, summary)
         repo.set_effective(self.db, self.job_id, {"recheck": {"enabled": True, **result.info, **result.counts}})
         self._finish("finalize", detail=summary)
