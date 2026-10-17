@@ -22,6 +22,7 @@ from typing import IO, Any
 
 from ..errors import EngineError
 from ..paths import EnginePaths
+from ..util import jsonsafe
 from .service import EngineService
 
 log = logging.getLogger(__name__)
@@ -34,7 +35,12 @@ class ProtocolWriter:
         self.closed = False
 
     def send(self, message: dict[str, Any]) -> None:
-        line = json.dumps(message, ensure_ascii=True, separators=(",", ":"), default=str)
+        replaced: list[str] = []
+        line = jsonsafe.dumps(message, found=replaced, ensure_ascii=True, separators=(",", ":"))
+        if replaced:
+            what = message.get("method") or f"reply {message.get('id')}"
+            log.warning("%s: values that are not JSON were sent as null or U+FFFD at %s", what,
+                        ", ".join(replaced[:10]) + (" …" if len(replaced) > 10 else ""))
         with self._lock:
             if self.closed:
                 return
@@ -88,7 +94,13 @@ def handle_line(service: EngineService, methods, writer: ProtocolWriter, line: s
         log.exception("method %s failed", method)
         writer.send({"id": request_id, "error": {"code": "internal_error", "message": f"{type(exc).__name__}: {exc}"}})
     else:
-        writer.send({"id": request_id, "result": result})
+        try:
+            writer.send({"id": request_id, "result": result})
+        except Exception as exc:  # noqa: BLE001 - the app must get an answer, never silence
+            log.exception("could not send the result of %s", method)
+            writer.send({"id": request_id, "error": {
+                "code": "internal_error",
+                "message": f"The engine could not send its answer to {method}: {type(exc).__name__}: {exc}"}})
 
 
 def _method_of(line: str) -> str | None:

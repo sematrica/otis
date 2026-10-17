@@ -13,6 +13,14 @@ from queue import Empty, Queue
 
 import pytest
 
+from verbatim_engine.util.jsonsafe import _LONE_SURROGATE as LONE_SURROGATE
+
+
+def strict_json(line: str):
+    """Parse like the app does: NaN, Infinity and lone surrogates are not JSON."""
+    assert not LONE_SURROGATE.search(line), line[:300]
+    return json.loads(line, parse_constant=lambda token: pytest.fail(f"not JSON: {token} in {line[:300]}"))
+
 
 class EngineProcess:
     def __init__(self, data_dir: Path):
@@ -34,7 +42,7 @@ class EngineProcess:
     def _read(self) -> None:
         for line in self.proc.stdout:
             self.raw_stdout.append(line)
-            self.lines.put(json.loads(line))
+            self.lines.put(strict_json(line))
 
     def call(self, method: str, params: dict | None = None, timeout: float = 30.0) -> dict:
         self._next_id += 1
@@ -176,3 +184,26 @@ def test_a_library_from_a_newer_version_is_refused_with_the_reason(data_dir):
     assert "newer version of Verbatim (database version 999" in last
     with sqlite3.connect(data_dir / "verbatim.sqlite3") as conn:  # left as it was
         assert conn.execute("PRAGMA user_version").fetchone()[0] == 999
+
+
+def test_values_that_are_not_json_never_make_a_reply_unreadable(engine, data_dir, jfk_path):
+    from verbatim_engine.storage import repo
+    from verbatim_engine.storage.db import Database
+    from verbatim_engine.transcript.model import TSegment, TWord
+
+    project = engine.result("projects.create", {"path": str(jfk_path), "title": "Odd values"})
+    # a non-finite score, and caption text from the web cut in the middle of an emoji
+    words = [TWord(0.0, 0.4, " And", 0.9), TWord(0.5, 0.9, " so", 0.9)]
+    flags = [{"type": "captions_differ", "severity": "low", "caption_text": "and so \ud83d", "agreement": float("nan")}]
+    odd = TSegment(0.0, 0.9, "And so", words, "en", avg_logprob=float("-inf"), compression_ratio=float("inf"),
+                   flags=flags)
+    db = Database(data_dir / "verbatim.sqlite3")
+    repo.replace_transcript(db, project["id"], None, [odd], "en", [])
+    db.close()
+    transcript = engine.result("transcript.get", {"project_id": project["id"], "include_words": True})
+    segment = transcript["segments"][0]
+    assert segment["avg_logprob"] is None and segment["compression_ratio"] is None
+    flag = next(f for f in segment["flags"] if f["type"] == "captions_differ")
+    assert flag["caption_text"] == "and so \ufffd" and flag["agreement"] is None
+    exported = engine.result("export.render", {"project_id": project["id"], "format": "json"})["content"]
+    strict_json(exported)

@@ -7,6 +7,12 @@ in `shared/protocol-fixtures/` and are decoded by the Swift tests.
 ## Framing
 
 * One JSON object per line (UTF-8, `\n`-terminated, ASCII-escaped).
+* Strict JSON only: a number that is not finite (NaN, infinity) is sent as
+  `null` and a lone UTF-16 surrogate as U+FFFD; the engine logs where it
+  replaced something. Every request gets a reply, also when its result could
+  not be serialized (`internal_error`).
+* When the engine cannot start, its last stderr line is
+  `verbatim-engine: cannot start: <reason>` and it exits with status 3.
 * stdout carries **only** protocol messages; logs go to stderr and
   `<data dir>/logs/engine.log`. The app must drain or redirect stderr.
 * Requests may be answered out of order; match responses by `id`.

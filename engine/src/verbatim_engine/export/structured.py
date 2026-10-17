@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import csv
 import io
-import json
 from typing import Any
 
+from ..util import jsonsafe
 from ..util.ids import utc_now
 from ..util.timecode import format_clock
 from .common import open_doubts, source_name, speaker_names, spoken_segments
@@ -90,7 +90,7 @@ def render_json(project: dict[str, Any], transcript: dict[str, Any], options: di
                          for s in original.get("segments") or []],
         },
     }
-    return json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+    return jsonsafe.dumps(payload, ensure_ascii=False, indent=2) + "\n"
 
 
 #: Spreadsheet programs run cells that start like a formula; such cells are

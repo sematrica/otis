@@ -97,4 +97,12 @@ final class FormattingTests: XCTestCase {
         XCTAssertEqual(EngineClientError.terminated(status: 9).localizedDescription,
                        "The transcription engine stopped unexpectedly (status 9).")
     }
+
+    func testAReplyThatIsNotJSONIsStillMatched() {
+        XCTAssertEqual(EngineClient.replyID(in: Data(#"{"id":42,"result":{"score":NaN}}"#.utf8)), 42)
+        XCTAssertNil(EngineClient.replyID(in: Data(#"{"method":"job.updated","params":{"v":NaN}}"#.utf8)))
+        XCTAssertNil(EngineClient.replyID(in: Data(#"{"id":null,"error":{}}"#.utf8)))
+        XCTAssertEqual(EngineClientError.invalidResponse("its reply was not valid JSON").localizedDescription,
+                       "Unexpected response from the transcription engine: its reply was not valid JSON")
+    }
 }

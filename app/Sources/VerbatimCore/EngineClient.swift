@@ -249,7 +249,13 @@ public actor EngineClient {
     }
 
     private func handle(line: Data) {
-        guard let head = try? decoder.decode(MessageHead.self, from: line) else { return }
+        guard let head = try? decoder.decode(MessageHead.self, from: line) else {
+            // Not JSON. If it is a reply, fail that request now rather than let it time out.
+            if let id = Self.replyID(in: line), let continuation = pending.removeValue(forKey: id) {
+                continuation.resume(throwing: EngineClientError.invalidResponse("its reply was not valid JSON"))
+            }
+            return
+        }
         if let id = head.id {
             pending.removeValue(forKey: id)?.resume(returning: line)
             return
@@ -311,6 +317,16 @@ public actor EngineClient {
         try? handle.seek(toOffset: max(log.offset, end > 65_536 ? end - 65_536 : 0))
         guard let data = try? handle.readToEnd() else { return nil }
         return Self.exitReason(fromLog: String(decoding: data, as: UTF8.self))
+    }
+
+    /// The id of a reply, read from the start of a line that is not valid JSON
+    /// (the engine writes `{"id":<n>,` first).
+    static func replyID(in line: Data) -> Int? {
+        let prefix = Array(#"{"id":"#.utf8)
+        guard line.starts(with: prefix) else { return nil }
+        let digits = line.dropFirst(prefix.count).prefix { $0 >= 0x30 && $0 <= 0x39 }
+        guard !digits.isEmpty, digits.count < 18 else { return nil }
+        return Int(String(decoding: digits, as: UTF8.self))
     }
 
     /// Prefix of the line the engine writes last when it cannot start.
