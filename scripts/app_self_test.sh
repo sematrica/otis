@@ -4,8 +4,9 @@
 # transcript workspace, snapshot the window, and quit.
 #   scripts/app_self_test.sh build/Verbatim.app MEDIA MODEL_DIR BACKEND EXPECTED_PHRASE [SPEAKERS]
 # With SPEAKERS=N the speaker identification and alignment models must be
-# installed in the app's models folder; N speakers are expected, a speaker is
-# renamed and the rename undone.
+# installed in the app's models folder; the job runs in Maximum Accuracy mode,
+# N speakers are expected, a speaker is renamed and the rename undone, and two
+# passages are re-checked on demand.
 set -euo pipefail
 APP="$1"; MEDIA="$2"; MODEL_DIR="$3"; BACKEND="$4"; EXPECTED="$5"; SPEAKERS="${6:-0}"
 OUT="$(mktemp -d)"
@@ -15,7 +16,7 @@ VERBATIM_SELF_TEST_BACKEND="$BACKEND" VERBATIM_SELF_TEST_OUTPUT="$OUT" \
 VERBATIM_SELF_TEST_SPEAKERS="$([[ "$SPEAKERS" != 0 ]] && echo 1 || echo 0)" \
     "$APP/Contents/MacOS/Verbatim" > "$OUT/app.log" 2>&1 &
 app_pid=$!
-for _ in $(seq 1 360); do
+for _ in $(seq 1 720); do
     kill -0 "$app_pid" 2>/dev/null || break
     sleep 0.5
 done
@@ -66,7 +67,8 @@ result = json.load(open(sys.argv[1]))
 speakers = int(sys.argv[3])
 assert result["status"] == "completed", result
 assert sys.argv[2].lower() in result["text"].lower(), result["text"]
-optional = set() if speakers else {"diarize", "align"}  # skipped when their models are not installed
+# skipped when their models are not installed; re-checking runs only in Maximum Accuracy
+optional = set() if speakers else {"diarize", "align", "retranscribe"}
 for entry in result["stages"]:
     stage, status = entry.split(":")
     assert status == "completed" or (stage in optional and status == "skipped"), result["stages"]
@@ -75,6 +77,8 @@ if speakers:
     assert len(result["speakers"]) == speakers, result["speakers"]
     assert result["aligned_words"] >= 0.7 * result["words"], result
     assert result["renamed"] == "Diane" and result["after_undo"] == "Speaker 1" and result["can_redo"], result
+    assert result["recheck_stages"] == ["prepare:completed", "retranscribe:completed", "finalize:completed"], result
+    assert result["rechecked"] == 2 and result["recheck_summary"].startswith("Re-check 2 passages"), result
 print("self-test passed:", result["segments"], "segment(s), language", result["language"],
       "speakers", result.get("speakers"), "aligned words", result.get("aligned_words"), "/", result.get("words"))
 PY

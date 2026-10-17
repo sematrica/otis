@@ -1,10 +1,10 @@
 {
   "method": "project.updated",
   "params": {
-    "created_at": "2026-10-16T20:50:01.988Z",
+    "created_at": "2026-10-17T02:58:11.536Z",
     "duration": 11.0,
     "has_video": false,
-    "id": "1ddb11a11f3a4123a81428d7e444842b",
+    "id": "732d3865188444d690912bc7f4365d6b",
     "language": null,
     "last_job_id": null,
     "media": {
@@ -42,6 +42,6 @@
     },
     "status": "new",
     "title": "JFK",
-    "updated_at": "2026-10-16T20:50:01.988Z"
+    "updated_at": "2026-10-17T02:58:11.536Z"
   }
 }

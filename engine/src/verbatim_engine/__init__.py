@@ -5,8 +5,8 @@ owns the SQLite database and schedules transcription jobs, each of which runs in
 its own worker subprocess (``verbatim-engine worker``).
 """
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 #: Version of the JSON-lines protocol spoken with the macOS app. Bump on any
 #: incompatible change to method names, parameters or result shapes.
-PROTOCOL_VERSION = 2
+PROTOCOL_VERSION = 3

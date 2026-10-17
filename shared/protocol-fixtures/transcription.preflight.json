@@ -11,6 +11,7 @@
       "mode": "balanced",
       "model_id": null,
       "model_path": "/Users/example/Models/faster-whisper-small",
+      "recheck": "auto",
       "speakers": {
         "max": null,
         "min": null,
@@ -37,6 +38,11 @@
         "id": null,
         "path": "/Users/example/Models/faster-whisper-small",
         "revision": null
+      },
+      "recheck": {
+        "acoustic_models": [],
+        "enabled": false,
+        "skip_reason": "Re-checking doubtful passages runs in Maximum Accuracy mode."
       },
       "warnings": []
     }

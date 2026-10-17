@@ -25,6 +25,7 @@ from ..transcript.build import apply_alignment
 from ..transcript.model import TSegment
 from ..util.hardware import performance_core_count
 from .compare import Candidate, compare
+from .quality import SpeechMap, segment_coverage
 from .retranscribe import (
     Decision,
     apply_decisions,
@@ -119,12 +120,15 @@ class Recheck:
     # pass 7 and applying ----------------------------------------------------------
 
     def finish(self, reader: WavReader, *, assign: Callable[[TSegment], list[TSegment]] | None = None,
-               reanalyse: Callable[[list[TSegment]], None] | None = None) -> RecheckResult:
+               reanalyse: Callable[[list[TSegment]], None] | None = None,
+               speech: SpeechMap | None = None) -> RecheckResult:
         """Compare the candidates by acoustic evidence and apply the decisions.
 
         ``assign`` re-assigns speakers to a changed segment (it may split it);
         without it, changed segments keep their speaker. ``reanalyse`` re-runs
-        the quality checks on the changed segments."""
+        the quality checks on the changed segments. ``speech`` (the speech
+        map) tells where speech was detected independently of the acoustic
+        model."""
         choice = self.resolved.scoring_model_for(self.language)
         model = load_alignment_model(choice[0], choice[1], performance_core_count()) if choice else None
         decisions: list[Decision] = []
@@ -150,8 +154,9 @@ class Recheck:
                     comparison = compare(scorer, scorer.emissions(reader.read(sw.start, sw.end)), candidates,
                                          left=sw.left, right=sw.right)
                 decisions.append(Decision(target, candidates, timed, comparison))
-        segments, changed_idx, counts, replaced = apply_decisions(self.segments, decisions, protected=self.protected,
-                                                                   language=self.language)
+        segments, changed_idx, counts, replaced = apply_decisions(
+            self.segments, decisions, protected=self.protected, language=self.language,
+            speech_coverage=(lambda seg: segment_coverage(seg, speech)) if speech is not None else None)
         changed = [segments[i] for i in sorted(changed_idx)]
         if changed and model is not None:
             apply_alignment(changed, WordAligner(model).align(reader, changed, self.language))

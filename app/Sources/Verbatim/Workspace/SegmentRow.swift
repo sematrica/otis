@@ -405,10 +405,15 @@ struct FlagStrip: View {
         if let flag = segment.flag("possible_hallucination") {
             let reasons = strings(flag.lookup("reasons")).map { Self.hallucinationReasons[$0] ?? $0 }
             let high = flag.lookup("severity")?.stringValue == "high"
+            var detail = "These words may not have been spoken: \(reasons.joined(separator: "; ")). "
+            if strings(flag.lookup("reasons")).contains("no_acoustic_support"),
+               (flag.lookup("speech_coverage")?.doubleValue ?? 0) >= 0.5 {
+                detail += "Speech was detected here, so the acoustic model may simply not recognise it "
+                    + "(overlapping, distant or telephone speech). "
+            }
+            detail += "Listen before keeping them; Remove Passage deletes them (undoable)."
             out.append(Item(symbol: "exclamationmark.bubble", label: "Possible hallucination",
-                            detail: "These words may not have been spoken: \(reasons.joined(separator: "; ")). "
-                                + "Listen before keeping them; Remove Passage deletes them (undoable).",
-                            color: high ? .red : .orange))
+                            detail: detail, color: high ? .red : .orange))
         }
         if let flag = segment.flag("low_confidence") {
             let reasons = strings(flag.lookup("reasons")).map { Self.unclearReasons[$0] ?? $0 }

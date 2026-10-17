@@ -412,3 +412,15 @@ def test_an_empty_transcript_over_speech_is_not_reported_as_silence():
     targets = select_targets([], gaps=missing_speech([], speech))
     assert [(round(t.start), round(t.end), t.gap) for t in targets] == [(18, 20, True), (28, 30, True)]
     assert select_targets([], indices=set(), gaps=missing_speech([], speech)) == []  # not on demand
+
+
+def test_no_acoustic_support_over_detected_speech_is_a_weaker_doubt():
+    for coverage, severity in ((0.0, "high"), (0.9, "medium")):
+        seg = _seg(0.0, "oh i dont hear that in new jersey now".split())
+        decision = _decision(seg, "no_acoustic_support")
+        segments, _, counts, _ = apply_decisions([seg], [decision], speech_coverage=lambda _s, c=coverage: c)
+        flag = next(f for f in segments[0].flags if f["type"] == "possible_hallucination")
+        assert flag["severity"] == severity and "no_acoustic_support" in flag["reasons"]
+        assert segments[0].text == "oh i dont hear that in new jersey now"  # words are never removed
+        result = next(f for f in segments[0].flags if f["type"] == "rechecked")
+        assert result["speech_detected"] is (coverage > 0.5) and counts["no_acoustic_support"] == 1

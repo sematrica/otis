@@ -179,6 +179,11 @@ def _word_spans(seg: TSegment) -> list[tuple[float, float]]:
     return [(seg.start, seg.end)]
 
 
+def segment_coverage(seg: TSegment, speech: SpeechMap) -> float | None:
+    """Share of the segment's word time in which speech was detected."""
+    return speech.coverage(_word_spans(seg))
+
+
 def repetitions(tokens: Sequence[str]) -> list[dict[str, Any]]:
     """Immediately repeated n-grams (n = 1..4): ``[{"text", "count", "loop"}]``."""
     found: list[dict[str, Any]] = []

@@ -60,7 +60,7 @@ public struct EngineConfiguration: Sendable {
     }
 }
 
-public let supportedProtocolVersion = 2
+public let supportedProtocolVersion = 3
 
 /// JSON-lines RPC client for `verbatim-engine serve`.
 public actor EngineClient {

@@ -37,6 +37,7 @@ final class FixtureDecodingTests: XCTestCase {
         let modes = try result("transcription.modes", as: ModesResult.self).modes
         XCTAssertEqual(modes.map(\.id), ["fast", "balanced", "maximum"])
         XCTAssertFalse(modes.last!.limitations.isEmpty)
+        XCTAssertEqual(modes.map(\.recheck), [false, false, true])
 
         let listing = try result("models.list", as: ModelsListing.self)
         XCTAssertEqual(listing.models.filter { $0.modelKind == "asr" }.count, 8)
@@ -73,14 +74,18 @@ final class FixtureDecodingTests: XCTestCase {
     func testJobsAndProgress() throws {
         let queued = try result("jobs.start", as: Job.self)
         XCTAssertEqual(queued.status, .queued)
+        XCTAssertEqual(queued.kind, "transcribe")
         XCTAssertEqual(queued.stages.map(\.stage),
-                       ["prepare", "extract", "analyze", "load_model", "transcribe", "diarize", "align", "finalize"])
+                       ["prepare", "extract", "analyze", "load_model", "transcribe", "diarize", "align",
+                        "quality", "retranscribe", "validate", "finalize"])
         XCTAssertEqual(queued.options.diarize, .auto)
 
-        // speaker and alignment models were not installed for this job
+        // speaker and alignment models were not installed for this job, and
+        // re-checking runs only in Maximum Accuracy mode
         let done = try result("jobs.get.completed", as: Job.self)
         XCTAssertEqual(done.status, .completed)
-        XCTAssertTrue(done.stages.allSatisfy { $0.status == (["diarize", "align"].contains($0.stage) ? .skipped : .completed) })
+        let skipped = ["diarize", "align", "retranscribe"]
+        XCTAssertTrue(done.stages.allSatisfy { $0.status == (skipped.contains($0.stage) ? .skipped : .completed) })
 
         let speakers = try result("jobs.get.completed.speakers", as: Job.self)
         XCTAssertTrue(speakers.stages.allSatisfy { $0.status == .completed })
@@ -184,5 +189,43 @@ final class FixtureDecodingTests: XCTestCase {
         XCTAssertEqual(preflight.options.mode, "balanced")
         XCTAssertEqual(preflight.resolved.diarization?.enabled, false)
         XCTAssertNotNil(preflight.resolved.diarization?.skipReason)
+        XCTAssertEqual(preflight.resolved.recheck?.enabled, false)
+        XCTAssertNotNil(preflight.resolved.recheck?.skipReason)
+    }
+
+    func testQualityReviewAndRecheck() throws {
+        // Maximum Accuracy: quality checks, re-checking and validation ran
+        let job = try result("jobs.get.completed.speakers", as: Job.self)
+        XCTAssertEqual(job.mode, "maximum")
+        XCTAssertEqual(job.effective?.lookup("recheck")?.lookup("enabled"), .bool(true))
+        let validation = try XCTUnwrap(job.effective?.lookup("validation"))
+        let transcript = try result("transcript.get.speakers", as: Transcript.self)
+        XCTAssertEqual(Double(transcript.segments.filter(\.needsReview).count),
+                       validation.lookup("needs_review")?.doubleValue)
+        XCTAssertTrue(transcript.segments.allSatisfy { [nil, "low", "medium", "high"].contains($0.reviewPriority) })
+        XCTAssertEqual(transcript.untranscribedSpeechCount, Int(validation.lookup("missing_speech")?.doubleValue ?? -1))
+
+        // an on-demand re-check is a job of its own, saved as one undoable correction
+        let queued = try result("transcript.recheck", as: Job.self)
+        XCTAssertEqual(queued.kind, "recheck")
+        XCTAssertEqual(queued.status, .queued)
+        XCTAssertEqual(queued.stages.map(\.stage), ["prepare", "retranscribe", "finalize"])
+        let done = try result("jobs.get.completed.recheck", as: Job.self)
+        XCTAssertEqual(done.status, .completed)
+        XCTAssertTrue(done.stages.allSatisfy { $0.status == .completed })
+        let rechecked = try result("transcript.get.rechecked", as: Transcript.self)
+        XCTAssertTrue(rechecked.history.undoSummary?.hasPrefix("Re-check 2 passages") ?? false)
+        XCTAssertEqual(rechecked.segments.filter { $0.flagTypes.contains("rechecked") }.count, 2)
+
+        let reviewed = try result("transcript.markReviewed", as: EditResult.self)
+        let first = try XCTUnwrap(reviewed.transcript.segments.first)
+        XCTAssertTrue(first.isReviewed)
+        XCTAssertNil(first.reviewPriority)
+        let removed = try result("transcript.deleteSegment", as: EditResult.self)
+        XCTAssertEqual(removed.transcript.segments.count, rechecked.segments.count - 1)
+        XCTAssertTrue(removed.transcript.history.canUndo)
+
+        let missing = try EngineClient.makeDecoder().decode(Failure.self, from: data("error.recheck_segment_not_found")).error
+        XCTAssertEqual(missing.code, "not_found")
     }
 }

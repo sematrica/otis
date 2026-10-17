@@ -1,4 +1,4 @@
-# Engine protocol (version 2)
+# Engine protocol (version 3)
 
 The app launches `verbatim-engine serve` (the embedded Python) and talks to it
 over the child's stdin/stdout. Real captured messages for every shape below are
@@ -33,8 +33,8 @@ interrupted (resumable), never silently lost.
 | `projects.get` | `project_id` | project |
 | `projects.rename` | `project_id`, `title` | project |
 | `projects.delete` | `project_id` | `{deleted}`; cancels its job and removes working files |
-| `transcription.modes` | — | `{modes: [{id, label, description, family, beam_size, best_of, cpu_compute_type, limitations, align}]}` |
-| `transcription.preflight` | `options` | `{options, resolved: {mode, backend, model, chunk_seconds, warnings, diarization: {enabled, skip_reason, speakers}, alignment: {enabled, candidates, skip_reason}}}` or `model_not_installed` |
+| `transcription.modes` | — | `{modes: [{id, label, description, family, beam_size, best_of, cpu_compute_type, limitations, align, recheck}]}` |
+| `transcription.preflight` | `options` | `{options, resolved: {mode, backend, model, chunk_seconds, warnings, diarization: {enabled, skip_reason, speakers}, alignment: {enabled, candidates, skip_reason}, recheck: {enabled, skip_reason, acoustic_models}}}` or `model_not_installed` |
 | `jobs.start` | `project_id`, `options` | job (queued). Refused if the model is missing. |
 | `jobs.cancel` / `jobs.resume` | `job_id` | job |
 | `jobs.get` | `job_id` | job |
@@ -51,6 +51,18 @@ interrupted (resumable), never silently lost.
 | `transcript.editText` | `project_id`, `segment_id`, `text` | edit result (words re-derived, see below) |
 | `transcript.markUncertain` | `project_id`, `segment_id`, `uncertain`, `note?` | edit result |
 | `transcript.undo` / `transcript.redo` | `project_id` | edit result (`changed: false` when there is nothing to undo/redo) |
+| `transcript.deleteSegment` | `project_id`, `segment_id` | edit result (the passage and its words are removed; undoable) |
+| `transcript.chooseWording` | `project_id`, `segment_id`, `source` (`first_pass` or a candidate's `source`) | edit result: the wording recorded by re-checking is used and its flags are marked `resolved` |
+| `transcript.markReviewed` | `project_id`, `segment_ids[]`, `reviewed?` (default true) | edit result: a `reviewed` flag is added (or removed) |
+| `transcript.recheck` | `project_id`, `segment_ids[]` | job of kind `recheck` (queued): passes 6–7 on those passages with the settings and extracted audio of the transcription that produced the transcript; the outcome is one undoable correction. Refused (`invalid_job_state`) while a job runs or when that audio is gone |
+| `llm.models` | `provider` (`ollama` / `openai`), `base_url?`, `api_key?` | `{provider, endpoint, remote, models[]}`; nothing from a transcript is sent |
+| `llm.review` | `project_id`, `provider`, `model`, `base_url?`, `api_key?`, `allow_remote?` | review run (`status: running`); progress via `llm.run.updated`. An endpoint not on this computer is refused (`invalid_params`, data `remote: true`) unless `allow_remote` is true |
+| `llm.runs` | `project_id` | `{runs: [run]}` newest first |
+| `llm.run` | `run_id`, `exchanges?` | run; with `exchanges`, every request and response as sent and received |
+| `llm.cancel` | `run_id` | run |
+| `suggestions.list` | `project_id`, `statuses?[]` | `{suggestions: [suggestion]}` |
+| `suggestions.accept` | `suggestion_id` | `{suggestion, summary, changed, transcript?, job}`: punctuation and terminology suggestions are applied as an undoable text edit, `suspicious` marks the passage uncertain with the model's reason, `retranscribe` starts a `recheck` job (the audio decides, not the language model). A suggestion whose passage changed since is marked `outdated` and not applied |
+| `suggestions.reject` | `suggestion_id` | suggestion |
 | `export.formats` | — | `{formats: ["txt"]}` |
 | `export.render` | `project_id`, `format`, `options?` | `{content, suggested_filename}` |
 | `export.write` | `project_id`, `format`, `path`, `options?` | `{path, bytes}` (atomic write) |
@@ -73,7 +85,8 @@ interrupted (resumable), never silently lost.
   "diarize": true | false | "auto",                   default "auto" (when the model is installed)
   "speakers": {"num": n | null, "min": n | null, "max": n | null},   all null = estimate
   "align": true | false | "auto",                     default "auto" (false in Fast mode)
-  "alignment_model": "alignment/en-conformer-small" | …   optional; default by language }
+  "alignment_model": "alignment/en-conformer-small" | …   optional; default by language
+  "recheck": true | false | "auto" }                  default "auto" (on in Maximum Accuracy only)
 ```
 
 `true` refuses to start (`model_not_installed`) when the model is missing;
@@ -82,9 +95,10 @@ interrupted (resumable), never silently lost.
 
 ### Job snapshot
 
-`status` ∈ queued, running, completed, failed, cancelled, interrupted.
-`stages[]` in order: prepare, extract, analyze, load_model, transcribe, diarize,
-align, finalize, each with `status` (pending, running, completed, failed,
+`kind` ∈ transcribe, recheck. `status` ∈ queued, running, completed, failed,
+cancelled, interrupted. `stages[]` in order: for `transcribe` prepare, extract,
+analyze, load_model, transcribe, diarize, align, quality, retranscribe,
+validate, finalize; for `recheck` prepare, retranscribe, finalize. Each has `status` (pending, running, completed, failed,
 skipped, cancelled), `label`, `elapsed_seconds`, `progress {done,total,unit}|null`,
 `fraction` (only when a real numerator and denominator exist, else null),
 `eta_seconds` (only after enough measured work in the current attempt, else null)
@@ -92,7 +106,15 @@ and `detail`. `effective` records the settings that actually ran (backend,
 model, revision, beam size, compute type, VAD, chunking, warnings) and, since
 protocol 2, `diarization` (method, speakers found and in the transcript,
 estimated count, overlap seconds, timings) and `alignment` (model, segments
-aligned / failed / skipped, wildcard words).
+aligned / failed / skipped, wildcard words); since protocol 3 `quality`
+(speech detectors, flag counts), `recheck` (enabled or the reason it was not,
+targets, windows, decodes, acoustic model, and counts: replaced, recovered,
+unresolved, no_acoustic_support, confirmed, same_wording, not_comparable) and
+`validation` (segments, timing_fixes, words_out_of_order, possible_duplicates,
+missing_speech, untranscribed_seconds, untranscribed[{start, end, severity}] (at
+most 100 listed), review {high, medium, low}, needs_review). The
+`retranscribe` stage counts decodes (`unit: "decodes"`); no stage reports a
+fraction without a real denominator.
 
 ### Transcript
 
@@ -102,6 +124,10 @@ aligned / failed / skipped, wildcard words).
   speakers: [speaker], merged_speakers: [speaker],
   segments: [segment] }                                       ordered by start time
 ```
+
+`effective` is the producing job's, also for an empty transcript: there,
+`effective.validation.missing_speech` says whether speech was detected that no
+word covers (an empty transcript is not necessarily a silent recording).
 
 Speaker: `id, label ("Speaker 1"), name (user-given or null), display_name,
 origin (diarization | user), color_index, merged_into, segment_count,
@@ -113,7 +139,9 @@ speaker is ever given a real name automatically.
 `id, ordinal (position in the current transcript), start, end, text,
 original_text, language, avg_logprob, no_speech_prob, compression_ratio,
 chunk_index, speaker_id, original_speaker_id (the diarization's choice),
-speaker_confidence (0–1 or null), text_edited, speaker_edited, flags[]` and,
+speaker_confidence (0–1 or null), text_edited, speaker_edited, flags[],
+review_priority` (high, medium, low or null: the most severe open flag; a
+`reviewed` flag clears it, except for the user's own uncertainty mark) and,
 with `include_words`, `words[{start, end, text, probability, timing_source,
 speaker_id}]`. `timing_source` ∈ whisper (recogniser estimate), alignment
 (forced alignment), wildcard (timed by the aligner's wildcard: digits,
@@ -136,7 +164,22 @@ Flags record every automatic decision and every doubt:
 | `overlapping_speech` | two or more people talk at once (`fraction`, `seconds`, `other_speakers` ids) |
 | `speaker_unassigned` | diarization found no speech near the words |
 | `alignment_failed` | forced alignment was rejected; recogniser timings kept (`reason`, `score`) |
-| `marked_uncertain` | marked by the user (`note`) |
+| `marked_uncertain` | marked by the user (`note`); high |
+| `low_confidence` | unclear speech (`reasons`: low_average_probability, many_uncertain_words, decoder_fallback; `avg_logprob`, `uncertain_words` of `words`); `confirmed_acoustically` when re-checking found the audio clearly supports the wording |
+| `possible_hallucination` | words that may not have been spoken (`reasons`: no_speech_detected, text_not_in_audio, repetition_loop, high_no_speech_probability, known_phrase (`phrase`), no_acoustic_support (`acoustic_margin`); `speech_coverage`). Words are never removed automatically |
+| `repeated_words` | immediate repetitions (`repeats[{text, count, loop}]`); low (often genuine) |
+| `missing_speech` | detected speech no word covers, on the segment before it (`start`, `end`, `detectors`: vad, diarization) |
+| `retranscribed` | the passage was re-worded because another decode fits the audio better (`first_pass`: the recogniser's original wording, `chosen`, `margin` in nats, `candidates[{source, text, score}]`); low |
+| `recovered_speech` | words added for untranscribed speech that beat "nothing was said" by the margin (`gap`, `chosen`, `margin`, `candidates`); medium |
+| `alternatives` | other wordings within the margin, or not comparable (`candidates`, `margin`, `reason`); medium. The first-pass wording stays |
+| `rechecked` | outcome of re-checking (`result`: confirmed, same_wording, unresolved, no_acoustic_support, not_comparable, not_rechecked (`reason`: overlapping speech), alternative_to_correction); informational |
+| `possible_duplicate` | the start repeats the end of the previous segment (`text`) |
+| `timing_inconsistent` | word times out of order (`words`) |
+| `reviewed` | the user checked the passage (`by`, `at`); informational |
+
+Flags with `severity` use it; others default as listed. Any flag with
+`resolved: true` (e.g. after `transcript.chooseWording`, with `chosen_by_user`)
+no longer asks for review.
 
 ### Edit result
 
@@ -159,6 +202,21 @@ rewritten words get interpolated times (`timing_source: interpolated`).
 | `project.deleted` | `{project_id}` |
 | `model.download` | `{model_id, status: running/cancelling/completed/failed/cancelled, done, total, total_is_estimate, error}` |
 | `transcript.updated` | `{project_id, revision, summary}` after a correction, undo or redo |
+| `llm.run.updated` | review run, on every change of status, batch progress or result |
+
+### AI review run and suggestion
+
+Run: `id, project_id, provider, model, endpoint, remote, status (running,
+completed, failed, cancelled), error, transcript_revision, segments_sent,
+requests, started_at, finished_at, suggestions {status: count}` (and
+`exchanges[{request, response, seconds, error}]` from `llm.run`). API keys are passed per
+call by the app (from the macOS Keychain) and are never stored or logged.
+
+Suggestion: `id, project_id, run_id, segment_id, kind (suspicious,
+punctuation, terminology, retranscribe), original_text, suggested_text,
+reason, status (pending, accepted, rejected, invalid, outdated), validation
+(why a suggestion was invalid: e.g. a punctuation suggestion that changes
+words), created_at, decided_at`. Nothing is applied until accepted.
 
 ## Error codes
 
@@ -166,4 +224,7 @@ rewritten words get interpolated times (`timing_source: interpolated`).
 `not_found`, `media_invalid`, `media_no_audio`, `source_changed`,
 `model_not_installed` (data: `model_id`, `display_name`, `approx_download_bytes`),
 `backend_unavailable`, `invalid_job_state`, `cancelled`, `download_failed`,
-`worker_crashed`, `interrupted`, `internal_error`.
+`worker_crashed`, `interrupted`, `internal_error`; since protocol 3
+`audio_unavailable` (a re-check job found no extracted audio), `llm_error`
+(the language-model endpoint failed or answered out of format) and
+`invalid_state` (an AI review of the project is already running).

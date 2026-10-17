@@ -1,0 +1,107 @@
+{
+  "id": 156,
+  "result": {
+    "attempt": 1,
+    "cancel_requested": false,
+    "created_at": "2026-10-17T02:58:30.305Z",
+    "current_stage": "finalize",
+    "effective": {
+      "recheck": {
+        "acoustic_model": {
+          "display_name": "English word alignment (Conformer-CTC Small)",
+          "id": "alignment/en-conformer-small"
+        },
+        "confirmed": 0,
+        "decodes": 2,
+        "enabled": true,
+        "no_acoustic_support": 0,
+        "not_comparable": 0,
+        "recovered": 0,
+        "replaced": 0,
+        "same_wording": 2,
+        "skipped_overlapping_speech": 0,
+        "targets": 2,
+        "unresolved": 0,
+        "windows": 1
+      }
+    },
+    "elapsed_seconds": 20.352,
+    "error": null,
+    "finished_at": "2026-10-17T02:58:50.659Z",
+    "id": "e7c3100ec6744f98893da3532340953c",
+    "kind": "recheck",
+    "mode": "maximum",
+    "options": {
+      "align": true,
+      "alignment_model": null,
+      "backend": "faster-whisper",
+      "chunk_seconds": 600.0,
+      "diarize": true,
+      "language": null,
+      "mode": "maximum",
+      "model_id": null,
+      "model_path": "/Users/example/Models/faster-whisper-small",
+      "recheck": true,
+      "recheck_request": {
+        "segment_ids": [
+          3,
+          4
+        ],
+        "source_job": "1d8d3ea55cd04f91b0a7009047e7546f"
+      },
+      "speakers": {
+        "max": null,
+        "min": null,
+        "num": null
+      },
+      "vad": true
+    },
+    "project_id": "15ae7d8705bc454caa4381d0f8ea8dee",
+    "project_title": "Call",
+    "stages": [
+      {
+        "detail": "2 passage(s) to re-check",
+        "elapsed_seconds": 0.003,
+        "eta_seconds": null,
+        "finished_at": "2026-10-17T02:58:30.451Z",
+        "fraction": null,
+        "label": "Checking source",
+        "progress": null,
+        "stage": "prepare",
+        "started_at": "2026-10-17T02:58:30.448Z",
+        "status": "completed"
+      },
+      {
+        "detail": "First-pass wording kept everywhere.",
+        "elapsed_seconds": 20.207,
+        "eta_seconds": null,
+        "finished_at": "2026-10-17T02:58:50.658Z",
+        "fraction": 1.0,
+        "label": "Re-checking doubtful passages",
+        "progress": {
+          "done": 2.0,
+          "total": 2.0,
+          "unit": "decodes"
+        },
+        "stage": "retranscribe",
+        "started_at": "2026-10-17T02:58:30.451Z",
+        "status": "completed"
+      },
+      {
+        "detail": "Re-check 2 passages: First-pass wording kept everywhere.",
+        "elapsed_seconds": 0.001,
+        "eta_seconds": null,
+        "finished_at": "2026-10-17T02:58:50.659Z",
+        "fraction": null,
+        "label": "Saving transcript",
+        "progress": null,
+        "stage": "finalize",
+        "started_at": "2026-10-17T02:58:50.658Z",
+        "status": "completed"
+      }
+    ],
+    "started_at": "2026-10-17T02:58:30.307Z",
+    "status": "completed",
+    "updated_at": "2026-10-17T02:58:50.659Z"
+  }
+}

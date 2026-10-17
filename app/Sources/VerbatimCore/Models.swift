@@ -271,6 +271,8 @@ public struct TranscriptionMode: Codable, Hashable, Sendable, Identifiable {
     public var limitations: String
     /// Forced word alignment by default in this mode.
     public var align: Bool?
+    /// Doubtful passages are re-transcribed and compared against the audio.
+    public var recheck: Bool?
 }
 
 public struct ModesResult: Codable, Sendable { public var modes: [TranscriptionMode] }
@@ -294,6 +296,14 @@ public struct Preflight: Codable, Hashable, Sendable {
         public var skipReason: String?
     }
 
+    /// Re-transcription of doubtful passages (Maximum Accuracy), and the
+    /// installed models that can compare the wordings by acoustic evidence.
+    public struct Recheck: Codable, Hashable, Sendable {
+        public var enabled: Bool
+        public var skipReason: String?
+        public var acousticModels: [String]
+    }
+
     public struct Resolved: Codable, Hashable, Sendable {
         public var mode: String
         public var backend: String
@@ -302,6 +312,7 @@ public struct Preflight: Codable, Hashable, Sendable {
         public var warnings: [String]
         public var diarization: Diarization?
         public var alignment: Alignment?
+        public var recheck: Recheck?
     }
 
     public var options: JobOptions

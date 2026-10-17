@@ -1,5 +1,5 @@
 {
-  "id": 102,
+  "id": 25,
   "result": {
     "effective": {
       "alignment": {
@@ -50,6 +50,31 @@
         "path": "/Users/example/Models/faster-whisper-small",
         "revision": null
       },
+      "quality": {
+        "flags": {},
+        "speech_detectors": [
+          "silero-vad"
+        ]
+      },
+      "recheck": {
+        "enabled": false,
+        "reason": "Re-checking doubtful passages runs in Maximum Accuracy mode."
+      },
+      "validation": {
+        "missing_speech": 0,
+        "needs_review": 0,
+        "possible_duplicates": 0,
+        "review": {
+          "high": 0,
+          "low": 0,
+          "medium": 0
+        },
+        "segments": 2,
+        "timing_fixes": 0,
+        "untranscribed": [],
+        "untranscribed_seconds": 0,
+        "words_out_of_order": 0
+      },
       "warnings": []
     },
     "history": {
@@ -59,10 +84,10 @@
       "redo_summary": null,
       "undo_summary": null
     },
-    "job_id": "37646741391c4a13b202f5485fa3100e",
+    "job_id": "128f38283d034c49ada2e0e52ad664f0",
     "language": "en",
     "merged_speakers": [],
-    "project_id": "1ddb11a11f3a4123a81428d7e444842b",
+    "project_id": "732d3865188444d690912bc7f4365d6b",
     "revision": 1,
     "segments": [
       {
@@ -77,6 +102,7 @@
         "ordinal": 0,
         "original_speaker_id": null,
         "original_text": "And so my fellow Americans, ask not what your country can do for you.",
+        "review_priority": null,
         "speaker_confidence": null,
         "speaker_edited": false,
         "speaker_id": null,
@@ -210,6 +236,7 @@
         "ordinal": 1,
         "original_speaker_id": null,
         "original_text": "Ask what you can do for your country.",
+        "review_priority": null,
         "speaker_confidence": null,
         "speaker_edited": false,
         "speaker_id": null,

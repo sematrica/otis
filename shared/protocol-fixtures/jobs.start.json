@@ -3,13 +3,13 @@
   "result": {
     "attempt": 0,
     "cancel_requested": false,
-    "created_at": "2026-10-16T20:50:01.992Z",
+    "created_at": "2026-10-17T02:58:11.540Z",
     "current_stage": null,
     "effective": null,
     "elapsed_seconds": null,
     "error": null,
     "finished_at": null,
-    "id": "37646741391c4a13b202f5485fa3100e",
+    "id": "128f38283d034c49ada2e0e52ad664f0",
     "kind": "transcribe",
     "mode": "balanced",
     "options": {
@@ -22,6 +22,7 @@
       "mode": "balanced",
       "model_id": null,
       "model_path": "/Users/example/Models/faster-whisper-small",
+      "recheck": "auto",
       "speakers": {
         "max": null,
         "min": null,
@@ -29,7 +30,7 @@
       },
       "vad": true
     },
-    "project_id": "1ddb11a11f3a4123a81428d7e444842b",
+    "project_id": "732d3865188444d690912bc7f4365d6b",
     "project_title": "JFK",
     "stages": [
       {
@@ -122,6 +123,42 @@
         "eta_seconds": null,
         "finished_at": null,
         "fraction": null,
+        "label": "Checking quality",
+        "progress": null,
+        "stage": "quality",
+        "started_at": null,
+        "status": "pending"
+      },
+      {
+        "detail": null,
+        "elapsed_seconds": null,
+        "eta_seconds": null,
+        "finished_at": null,
+        "fraction": null,
+        "label": "Re-checking doubtful passages",
+        "progress": null,
+        "stage": "retranscribe",
+        "started_at": null,
+        "status": "pending"
+      },
+      {
+        "detail": null,
+        "elapsed_seconds": null,
+        "eta_seconds": null,
+        "finished_at": null,
+        "fraction": null,
+        "label": "Validating transcript",
+        "progress": null,
+        "stage": "validate",
+        "started_at": null,
+        "status": "pending"
+      },
+      {
+        "detail": null,
+        "elapsed_seconds": null,
+        "eta_seconds": null,
+        "finished_at": null,
+        "fraction": null,
         "label": "Saving transcript",
         "progress": null,
         "stage": "finalize",
@@ -131,6 +168,6 @@
     ],
     "started_at": null,
     "status": "queued",
-    "updated_at": "2026-10-16T20:50:01.992Z"
+    "updated_at": "2026-10-17T02:58:11.540Z"
   }
 }

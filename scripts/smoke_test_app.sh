@@ -17,7 +17,7 @@ print("engine", info["version"], "protocol", info["protocol_version"], "python",
 for b in info["backends"]:
     detail = b["unavailable_reason"] or b["capabilities"]["acceleration"]
     print("  %-15s available=%s %s" % (b["name"], b["available"], detail))
-assert info["protocol_version"] == 2
+assert info["protocol_version"] == 3
 assert any(b["name"] == "faster-whisper" and b["available"] for b in info["backends"])
 '
 

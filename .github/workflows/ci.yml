@@ -65,6 +65,18 @@ jobs:
           VERBATIM_TEST_REPORT: ${{ runner.temp }}/accuracy-linux.json
           VERBATIM_TEST_OLLAMA_MODEL: qwen2.5:0.5b
         run: uv run --project engine pytest engine/tests -m model -q -s -rs
+      - name: Capture protocol fixtures (real engine messages, including an AI review with the local model)
+        run: >-
+          uv run --project engine python engine/scripts/capture_protocol_fixtures.py
+          --model-path "$RUNNER_TEMP/vdata/models/faster-whisper/small"
+          --diarization-dir "$RUNNER_TEMP/vdata/models/diarization/pyannote-wespeaker"
+          --alignment-dir "$RUNNER_TEMP/vdata/models/alignment/en-conformer-small"
+          --conversation "$RUNNER_TEMP/speaker-corpus/sample.wav" --ollama-model qwen2.5:0.5b
+          && git status --short shared/protocol-fixtures
+      - uses: actions/upload-artifact@v4
+        with:
+          name: protocol-fixtures
+          path: shared/protocol-fixtures
       - name: Word-timestamp benchmark (synthetic speech with known word times)
         working-directory: engine
         run: >-
@@ -169,7 +181,7 @@ jobs:
         run: >-
           scripts/app_self_test.sh build/Verbatim.app "$RUNNER_TEMP/jfk-video.mp4"
           "$RUNNER_TEMP/vdata/models/mlx/small" mlx "fellow Americans"
-      - name: App self-test with speakers and word alignment (two-person call, rename, undo)
+      - name: App self-test, Maximum Accuracy with speakers and word alignment (two-person call, rename, undo, re-check)
         run: |
           models="$HOME/Library/Application Support/Verbatim/models"
           mkdir -p "$models/diarization" "$models/alignment"

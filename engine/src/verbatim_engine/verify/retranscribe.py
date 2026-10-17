@@ -25,7 +25,7 @@ import difflib
 import hashlib
 import json
 from dataclasses import dataclass, field, replace
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 
 from ..asr.base import DecodeOptions, Word
 from ..asr.merge import normalize_token
@@ -53,6 +53,10 @@ PROMPT_WORDS = 48
 #: scores there mix both voices, so it is not re-worded automatically.
 OVERLAP_SKIP_SECONDS = 0.25
 #: Speaker and pass-5 flags are recomputed for changed segments.
+#: Share of a passage's words over detected speech above which "no acoustic
+#: support" is not taken as a strong sign of a hallucination.
+SPEECH_DETECTED_SHARE = 0.5
+
 RECOMPUTED_FLAGS = {"low_confidence", "possible_hallucination", "repeated_words", "overlapping_speech",
                     "speaker_uncertain", "speaker_change_uncertain", "speaker_unassigned", "split_at_speaker_change",
                     "alignment_failed"}
@@ -278,13 +282,20 @@ def _distinct_wordings(decision: Decision) -> int:
 
 
 def apply_decisions(segments: list[TSegment], decisions: Sequence[Decision], *, protected: set[int] | None = None,
-                    language: str | None = None) -> tuple[list[TSegment], set[int], dict[str, int], dict[int, TSegment]]:
+                    language: str | None = None, speech_coverage: Callable[[TSegment], float | None] | None = None,
+                    ) -> tuple[list[TSegment], set[int], dict[str, int], dict[int, TSegment]]:
     """Apply pass-7 decisions. Returns the new segment list, the indices (in
     it) of segments whose words changed or were added, counts per outcome, and
     the replacement of each re-worded segment by its original index.
 
     Segments in ``protected`` (text corrected by the user) are never re-worded:
-    a better-supported wording is offered as an alternative instead."""
+    a better-supported wording is offered as an alternative instead.
+
+    ``speech_coverage`` gives the share of a segment's words over detected
+    speech. Words the acoustic model does not support are a strong sign of a
+    hallucination only where no speech was detected; over detected speech the
+    acoustic model may simply fail (overlap, telephone band, cut-off words),
+    so the doubt is reported with medium severity."""
     protected = protected or set()
     counts = {"replaced": 0, "recovered": 0, "unresolved": 0, "no_acoustic_support": 0, "confirmed": 0,
               "same_wording": 0, "not_comparable": 0}
@@ -354,10 +365,17 @@ def apply_decisions(segments: list[TSegment], decisions: Sequence[Decision], *, 
             if flag is None:
                 flag = {"type": "possible_hallucination", "reasons": []}
                 seg.flags.append(flag)
-            flag["severity"] = "high"
+            heard = speech_coverage(seg) if speech_coverage is not None else None
+            speech_detected = heard is not None and heard >= SPEECH_DETECTED_SHARE
+            severity = "medium" if speech_detected else "high"
+            if LEVELS.get(flag.get("severity"), 0) < LEVELS[severity]:
+                flag["severity"] = severity
             flag["reasons"] = [*(r for r in flag.get("reasons", []) if r != "no_acoustic_support"), "no_acoustic_support"]
             flag["acoustic_margin"] = comparison.margin
-            seg.flags.append({"type": "rechecked", "result": "no_acoustic_support", "candidates": payload})
+            if heard is not None:
+                flag["speech_coverage"] = round(heard, 3)
+            seg.flags.append({"type": "rechecked", "result": "no_acoustic_support", "speech_detected": speech_detected,
+                              "candidates": payload})
             counts["no_acoustic_support"] += 1
         elif comparison.decision == "unresolved":
             seg.flags.append({"type": "alternatives", "severity": "medium", "candidates": payload,

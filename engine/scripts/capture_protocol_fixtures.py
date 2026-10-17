@@ -10,8 +10,10 @@ machine are replaced with neutral placeholders; everything else is verbatim.
         --conversation /path/to/sample.wav
 
 With the speaker and alignment models, a two-person conversation is also
-transcribed with speakers and word alignment, and the correction methods
-(rename, undo) are captured.
+transcribed in Maximum Accuracy mode (speakers, word alignment, quality checks
+and re-checking), and the correction methods (rename, split, undo, re-check,
+mark reviewed, remove) are captured. With ``--ollama-model`` (a model pulled
+into a local Ollama), an AI review of that conversation is captured too.
 """
 
 from __future__ import annotations
@@ -37,6 +39,8 @@ def main() -> int:
     parser.add_argument("--diarization-dir", help="installed diarization model folder")
     parser.add_argument("--alignment-dir", help="installed English alignment model folder")
     parser.add_argument("--conversation", help="a short multi-speaker recording (e.g. the speaker corpus sample.wav)")
+    parser.add_argument("--ollama-model", help="a model pulled into a local Ollama, for the AI review messages")
+    parser.add_argument("--ollama-url", default="http://127.0.0.1:11434")
     args = parser.parse_args()
 
     data_dir = Path(tempfile.mkdtemp(prefix="verbatim-fixtures-"))
@@ -124,7 +128,7 @@ def main() -> int:
     if args.conversation and args.diarization_dir and args.alignment_dir:
         install_speaker_models()
         call_project = call("projects.create", {"path": args.conversation, "title": "Call"})["result"]
-        speaker_options = {**options, "diarize": True, "align": True}
+        speaker_options = {**options, "mode": "maximum", "diarize": True, "align": True}
         job = call("jobs.start", {"project_id": call_project["id"], "options": speaker_options})["result"]
         while True:
             snapshot = call("jobs.get", {"job_id": job["id"]})
@@ -152,6 +156,57 @@ def main() -> int:
             note = next((n for n in notifications if n["method"] == "transcript.updated"), None)
         if note:
             save("notification.transcript.updated", note)
+
+        # Stage 3: on-demand re-check, review marks, removing a passage
+        pid = call_project["id"]
+        segments = call("transcript.get", {"project_id": pid, "include_words": True})["result"]["segments"]
+        chosen = [s["id"] for s in segments if s["words"]][:2]
+        recheck = call("transcript.recheck", {"project_id": pid, "segment_ids": chosen})
+        save("transcript.recheck", recheck)
+        while True:
+            snapshot = call("jobs.get", {"job_id": recheck["result"]["id"]})
+            if snapshot["result"]["status"] in ("completed", "failed", "cancelled", "interrupted"):
+                break
+            time.sleep(0.3)
+        save("jobs.get.completed.recheck", snapshot)
+        save("transcript.get.rechecked", call("transcript.get", {"project_id": pid, "include_words": True}))
+        save("transcript.markReviewed", call("transcript.markReviewed", {"project_id": pid, "segment_ids": chosen[:1]}))
+        save("transcript.deleteSegment", call("transcript.deleteSegment", {"project_id": pid, "segment_id": chosen[-1]}))
+        call("transcript.undo", {"project_id": pid})
+        save("error.recheck_segment_not_found",
+             call("transcript.recheck", {"project_id": pid, "segment_ids": [999999]}))
+
+        if args.ollama_model:
+            provider = {"provider": "ollama", "model": args.ollama_model, "base_url": args.ollama_url}
+            save("llm.models", call("llm.models", {"provider": "ollama", "base_url": args.ollama_url}))
+            save("error.llm_remote_not_allowed", call("llm.review", {
+                "project_id": pid, "provider": "openai", "model": "example-model",
+                "base_url": "https://api.openai.example/v1", "api_key": "placeholder"}))
+            run = call("llm.review", {"project_id": pid, **provider})
+            save("llm.review", run)
+            while True:
+                detail = call("llm.run", {"run_id": run["result"]["id"], "exchanges": True})
+                if detail["result"]["status"] != "running":
+                    break
+                time.sleep(0.5)
+            save("llm.run", detail)
+            save("llm.runs", call("llm.runs", {"project_id": pid}))
+            suggestions = call("suggestions.list", {"project_id": pid})
+            save("suggestions.list", suggestions)
+            pending = [x for x in suggestions["result"]["suggestions"] if x["status"] == "pending"]
+            applicable = [x for x in pending if x["kind"] != "retranscribe"]
+            if applicable:
+                save("suggestions.accept", call("suggestions.accept", {"suggestion_id": applicable[0]["id"]}))
+            if len(pending) > 1:
+                rest = [x for x in pending if not applicable or x["id"] != applicable[0]["id"]]
+                save("suggestions.reject", call("suggestions.reject", {"suggestion_id": rest[0]["id"]}))
+            update = next((n for n in notifications if n["method"] == "llm.run.updated"
+                           and n["params"]["status"] != "running"), None)
+            if update is None:
+                time.sleep(0.5)
+                update = next((n for n in notifications if n["method"] == "llm.run.updated"), None)
+            if update:
+                save("notification.llm.run.updated", update)
     save("projects.list", call("projects.list"))
     call("engine.shutdown")
     proc.wait(timeout=30)

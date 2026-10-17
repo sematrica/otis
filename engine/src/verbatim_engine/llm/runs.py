@@ -80,6 +80,9 @@ def get_suggestion(db: Database, suggestion_id: int) -> dict[str, Any]:
 def decide(db: Database, suggestion_id: int, status: str) -> dict[str, Any]:
     if status not in ("accepted", "rejected", "outdated"):
         raise InvalidParams(f"Unknown decision '{status}'.")
+    current = get_suggestion(db, suggestion_id)["status"]
+    if current != "pending":
+        raise InvalidParams(f"This suggestion is already {current}.", data={"status": current})
     db.execute("UPDATE suggestions SET status = ?, decided_at = ? WHERE id = ?", (status, utc_now(), suggestion_id))
     return get_suggestion(db, suggestion_id)
 

@@ -7,33 +7,36 @@
         "beam_size": 1,
         "best_of": 1,
         "cpu_compute_type": "int8",
-        "description": "Whisper Small with greedy decoding and speaker identification; word times from Whisper. Quickest; less accurate on difficult audio.",
+        "description": "Whisper Small with greedy decoding and speaker identification; word times from Whisper; quality checks flag doubtful passages. Quickest; less accurate on difficult audio.",
         "family": "small",
         "id": "fast",
         "label": "Fast",
-        "limitations": ""
+        "limitations": "",
+        "recheck": false
       },
       {
         "align": true,
         "beam_size": 5,
         "best_of": 5,
         "cpu_compute_type": "int8",
-        "description": "Whisper Large-v3 Turbo with beam search where the backend supports it, speaker identification and forced word alignment.",
+        "description": "Whisper Large-v3 Turbo with beam search where the backend supports it, speaker identification, forced word alignment and quality checks.",
         "family": "large-v3-turbo",
         "id": "balanced",
         "label": "Balanced",
-        "limitations": ""
+        "limitations": "",
+        "recheck": false
       },
       {
         "align": true,
         "beam_size": 5,
         "best_of": 5,
         "cpu_compute_type": "float32",
-        "description": "Whisper Large-v3 with beam search where supported (float32 on the CPU backend), speaker identification and forced word alignment.",
+        "description": "Whisper Large-v3 with beam search where supported (float32 on the CPU backend), speaker identification, forced word alignment, quality checks, and re-transcription of doubtful passages with the wording chosen by acoustic evidence. Slowest.",
         "family": "large-v3",
         "id": "maximum",
         "label": "Maximum Accuracy",
-        "limitations": "Multi-pass verification and targeted re-transcription are not implemented yet; this mode currently runs a single high-accuracy pass."
+        "limitations": "Wordings are compared acoustically only in languages an installed word-alignment model supports; elsewhere, differing wordings are listed for review instead.",
+        "recheck": true
       }
     ]
   }

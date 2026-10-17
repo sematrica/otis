@@ -9,9 +9,10 @@ import VerbatimCore
 ///     VERBATIM_SELF_TEST_MODEL_DIR   real model folder
 ///     VERBATIM_SELF_TEST_BACKEND     faster-whisper (default) or mlx
 ///     VERBATIM_SELF_TEST_OUTPUT      folder for result.json and window.png
-///     VERBATIM_SELF_TEST_SPEAKERS    "1": require speaker identification and
-///                                    word alignment, then rename a speaker
-///                                    and undo it through the engine
+///     VERBATIM_SELF_TEST_SPEAKERS    "1": Maximum Accuracy with required
+///                                    speaker identification and word
+///                                    alignment; then rename a speaker, undo
+///                                    it, and re-check two passages
 ///
 /// It goes through the same AppModel the UI uses (engine start, validation,
 /// import, job notifications, transcript loading), opens the transcript
@@ -67,7 +68,7 @@ struct SelfTest {
             let staged = await model.stage([media])
             step("staged: \(staged.first?.error ?? "ok")")
             if let error = staged.first?.error { throw Failure(description: "validation failed: \(error)") }
-            let options = JobOptions(mode: "balanced", backend: backend, modelPath: modelDirectory,
+            let options = JobOptions(mode: speakers ? "maximum" : "balanced", backend: backend, modelPath: modelDirectory,
                                      diarize: speakers ? .on : .auto, align: speakers ? .on : .auto)
             guard await model.transcribe(staged, options: options) else {
                 throw Failure(description: model.alert?.message ?? "could not start the job")
@@ -77,16 +78,7 @@ struct SelfTest {
             }
             step("job queued for project \(project.id)")
 
-            // Completion arrives through the engine's job.updated notifications.
-            let deadline = Date().addingTimeInterval(900)
-            var job = model.latestJob(for: project.id)
-            while Date() < deadline, job?.status.isActive ?? true {
-                try await Task.sleep(for: .milliseconds(250))
-                job = model.latestJob(for: project.id)
-            }
-            guard let job, job.status == .completed else {
-                throw Failure(description: "job ended as \(job?.status.rawValue ?? "timeout"): \(job?.error?.message ?? "")")
-            }
+            let job = try await finished(model, project: project.id)
             step("job \(job.status.rawValue)")
             let transcript = try await model.transcript(for: project)
             step("transcript loaded: \(transcript.segments.count) segments")
@@ -120,6 +112,17 @@ struct SelfTest {
                 result["after_undo"] = undone.transcript.speaker(first.id).map { $0.displayName as Any } ?? NSNull()
                 result["can_redo"] = undone.transcript.history.canRedo
                 step("undo done")
+
+                // Re-check two passages on demand: a job of its own, saved as one correction.
+                let ids = undone.transcript.segments.filter { !($0.words ?? []).isEmpty }.prefix(2).map(\.id)
+                let queued = try await model.client.recheck(projectId: project.id, segmentIds: Array(ids))
+                step("re-check queued: \(queued.id)")
+                let recheck = try await finished(model, project: project.id, after: queued.id)
+                let rechecked = try await model.transcript(for: project)
+                result["recheck_stages"] = recheck.stages.map { "\($0.stage):\($0.status.rawValue)" }
+                result["rechecked"] = rechecked.segments.filter { ids.contains($0.id) && $0.flagTypes.contains("rechecked") }.count
+                result["recheck_summary"] = rechecked.history.undoSummary.map { $0 as Any } ?? NSNull()
+                step("re-check \(recheck.status.rawValue)")
             }
         } catch {
             result["status"] = "failed"
@@ -130,6 +133,21 @@ struct SelfTest {
         }
         step("result written; quitting")
         NSApp.terminate(nil)  // the normal quit path: the engine is stopped cleanly
+    }
+
+    /// Waits for the project's latest job (or exactly ``after``) to finish;
+    /// completion arrives through the engine's job.updated notifications.
+    private func finished(_ model: AppModel, project: String, after id: String? = nil) async throws -> Job {
+        let deadline = Date().addingTimeInterval(900)
+        var job = id.flatMap { model.jobs[$0] } ?? model.latestJob(for: project)
+        while Date() < deadline, job?.status.isActive ?? true {
+            try await Task.sleep(for: .milliseconds(250))
+            job = id.flatMap { model.jobs[$0] } ?? model.latestJob(for: project)
+        }
+        guard let job, job.status == .completed else {
+            throw Failure(description: "job ended as \(job?.status.rawValue ?? "timeout"): \(job?.error?.message ?? "")")
+        }
+        return job
     }
 
     private func snapshotWindow(to url: URL) -> Bool {

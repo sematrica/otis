@@ -281,7 +281,8 @@ class Worker:
                            check_cancel=self._check_cancel)
             speech = build_speech_map(reader, None, spans=[(w.start - 2.5, w.end + 2.5) for w in recheck.windows],
                                       should_cancel=self._poll_cancel)
-            result = recheck.finish(reader, reanalyse=lambda changed: analyse(changed, speech, missing=False))
+            result = recheck.finish(reader, reanalyse=lambda changed: analyse(changed, speech, missing=False),
+                                    speech=speech)
             self._finish("retranscribe", detail=summary_text(result.counts, result.info["acoustic_model"] is not None))
         finally:
             reader.close()
@@ -567,6 +568,7 @@ class Worker:
             reader,
             assign=(lambda seg: assign_speakers([seg], diarization)) if diarization is not None else None,
             reanalyse=lambda changed: analyse(changed, speech, missing=False),
+            speech=speech,
         )
         effective["recheck"] = {"enabled": True, **result.info, **result.counts}
         self._finish("retranscribe", detail=summary_text(result.counts, result.info["acoustic_model"] is not None))

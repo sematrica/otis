@@ -201,6 +201,13 @@ struct ImportPanel: View {
                     Label("Speakers identified on this Mac", systemImage: "person.2").font(.caption).foregroundStyle(.secondary)
                 }
                 alignmentStatus(result.resolved.alignment)
+                if let recheck = result.resolved.recheck, recheck.enabled {
+                    Label(recheck.acousticModels.isEmpty
+                              ? "Doubtful passages re-transcribed; with no word-alignment model, other wordings are listed for review"
+                              : "Doubtful passages re-transcribed and compared against the audio",
+                          systemImage: "checkmark.seal")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
             }
         case .some(.failure(let error)):
             HStack(spacing: 8) {

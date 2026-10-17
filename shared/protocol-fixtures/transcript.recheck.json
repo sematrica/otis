@@ -1,0 +1,84 @@
+{
+  "id": 87,
+  "result": {
+    "attempt": 0,
+    "cancel_requested": false,
+    "created_at": "2026-10-17T02:58:30.305Z",
+    "current_stage": null,
+    "effective": null,
+    "elapsed_seconds": null,
+    "error": null,
+    "finished_at": null,
+    "id": "e7c3100ec6744f98893da3532340953c",
+    "kind": "recheck",
+    "mode": "maximum",
+    "options": {
+      "align": true,
+      "alignment_model": null,
+      "backend": "faster-whisper",
+      "chunk_seconds": 600.0,
+      "diarize": true,
+      "language": null,
+      "mode": "maximum",
+      "model_id": null,
+      "model_path": "/Users/example/Models/faster-whisper-small",
+      "recheck": true,
+      "recheck_request": {
+        "segment_ids": [
+          3,
+          4
+        ],
+        "source_job": "1d8d3ea55cd04f91b0a7009047e7546f"
+      },
+      "speakers": {
+        "max": null,
+        "min": null,
+        "num": null
+      },
+      "vad": true
+    },
+    "project_id": "15ae7d8705bc454caa4381d0f8ea8dee",
+    "project_title": "Call",
+    "stages": [
+      {
+        "detail": null,
+        "elapsed_seconds": null,
+        "eta_seconds": null,
+        "finished_at": null,
+        "fraction": null,
+        "label": "Checking source",
+        "progress": null,
+        "stage": "prepare",
+        "started_at": null,
+        "status": "pending"
+      },
+      {
+        "detail": null,
+        "elapsed_seconds": null,
+        "eta_seconds": null,
+        "finished_at": null,
+        "fraction": null,
+        "label": "Re-checking doubtful passages",
+        "progress": null,
+        "stage": "retranscribe",
+        "started_at": null,
+        "status": "pending"
+      },
+      {
+        "detail": null,
+        "elapsed_seconds": null,
+        "eta_seconds": null,
+        "finished_at": null,
+        "fraction": null,
+        "label": "Saving transcript",
+        "progress": null,
+        "stage": "finalize",
+        "started_at": null,
+        "status": "pending"
+      }
+    ],
+    "started_at": null,
+    "status": "queued",
+    "updated_at": "2026-10-17T02:58:30.305Z"
+  }
+}
