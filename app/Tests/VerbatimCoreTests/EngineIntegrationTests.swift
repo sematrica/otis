@@ -49,7 +49,7 @@ final class EngineIntegrationTests: XCTestCase {
 
         let jfk = Self.repositoryRoot.appendingPathComponent("engine/tests/corpus/jfk.wav")
         let project = try await client.createProject(path: jfk.path)
-        XCTAssertEqual(project.media.audioStreams.first?.sampleRate, 16_000)
+        XCTAssertEqual(project.media?.audioStreams.first?.sampleRate, 16_000)
         let projects = try await client.listProjects()
         XCTAssertEqual(projects.map(\.id), [project.id])
         let renamed = try await client.renameProject(project.id, title: "Inaugural")

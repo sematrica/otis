@@ -175,6 +175,8 @@ class Worker:
     def _run(self, project: dict[str, Any], options: dict[str, Any]) -> None:
         source = project["source"]
         media = project["media"]
+        if media is None or not source["path"]:
+            raise EngineError("This project's media has not been retrieved yet.", code="source_changed")
 
         # 1. prepare ----------------------------------------------------------
         self._start("prepare")

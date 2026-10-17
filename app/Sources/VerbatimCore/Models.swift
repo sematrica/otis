@@ -110,11 +110,16 @@ public struct Project: Codable, Hashable, Sendable, Identifiable {
     public var duration: Double?
     public var hasVideo: Bool
     public var language: String?
-    public var media: MediaInfo
+    /// nil until the media of a YouTube project has been retrieved.
+    public var media: MediaInfo?
     public var lastJobId: String?
     public var segmentCount: Int
+    /// Where a YouTube project's media came from (video, channel, licence,
+    /// chapters, the user's authorization, what was retrieved).
+    public var sourceMeta: JSONValue?
 
     public var sourceURL: URL? { source.path.map { URL(fileURLWithPath: $0) } }
+    public var isFromYouTube: Bool { sourceMeta?.lookup("kind")?.stringValue == "youtube" }
     public var updatedDate: Date? { ISO8601.parse(updatedAt) }
 }
 
@@ -502,6 +507,78 @@ public struct TranscriptUpdated: Codable, Hashable, Sendable {
     public var revision: Int
     public var summary: String?
 }
+
+// MARK: - YouTube
+
+/// A caption track offered with a video: the creator's ("manual") or
+/// YouTube's automatic captions in the video's own language ("auto").
+public struct CaptionTrackInfo: Codable, Hashable, Sendable, Identifiable {
+    public var language: String
+    public var name: String?
+    public var kind: String
+    public var formats: [String]?
+
+    public var id: String { "\(kind):\(language)" }
+    public var isAutomatic: Bool { kind == "auto" }
+}
+
+public struct YouTubeRefusal: Codable, Hashable, Sendable {
+    public var code: String
+    public var message: String
+}
+
+public struct YouTubeChapter: Codable, Hashable, Sendable {
+    public var start: Double?
+    public var end: Double?
+    public var title: String?
+}
+
+public struct YouTubeSizes: Codable, Hashable, Sendable {
+    public var video: Int?
+    public var audio: Int?
+}
+
+/// ``youtube.inspect``: what a link points to, before anything is retrieved.
+public struct YouTubeInspection: Codable, Hashable, Sendable {
+    public var url: String
+    public var videoId: String?
+    public var title: String?
+    public var channel: String?
+    public var channelUrl: String?
+    public var duration: Double?
+    public var uploadDate: String?
+    public var license: String?
+    public var language: String?
+    public var liveStatus: String?
+    public var availability: String?
+    public var thumbnail: String?
+    public var chapters: [YouTubeChapter]
+    public var sponsorChapters: [YouTubeChapter]
+    public var captions: [CaptionTrackInfo]
+    public var approxBytes: YouTubeSizes?
+    /// Why it cannot be imported (live, needs an account, DRM...).
+    public var refusal: YouTubeRefusal?
+    public var adsNote: String
+}
+
+public struct CreatedFromYouTube: Codable, Sendable {
+    public var project: Project
+    public var job: Job
+}
+
+/// A caption track stored with a project (as published; not the transcript).
+public struct CaptionInfo: Codable, Hashable, Sendable, Identifiable {
+    public var id: Int
+    public var projectId: String
+    public var language: String
+    public var name: String?
+    public var kind: String
+    public var source: String
+    public var fetchedAt: String
+    public var cueCount: Int
+}
+
+public struct CaptionsResult: Codable, Sendable { public var captions: [CaptionInfo] }
 
 // MARK: - Search
 

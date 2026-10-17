@@ -14,7 +14,6 @@ from __future__ import annotations
 import functools
 import http.server
 import threading
-from pathlib import Path
 
 import pytest
 

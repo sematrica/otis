@@ -47,6 +47,8 @@ struct ImportPanel: View {
     @State private var preflight: Result<Preflight, EngineClientError>?
     @State private var pendingDownload: ModelEntry?
     @State private var isStarting = false
+    @State private var youtubeLink = ""
+    @State private var checkingLink: String?
 
     private var options: JobOptions {
         JobOptions(mode: mode, backend: backend, language: language.isEmpty ? nil : language,
@@ -59,6 +61,7 @@ struct ImportPanel: View {
         VStack(alignment: .leading, spacing: 14) {
             dropZone
             if !staged.isEmpty { stagedList }
+            youtubeRow
             HStack(alignment: .top, spacing: 24) {
                 modePicker
                 Spacer(minLength: 0)
@@ -77,6 +80,12 @@ struct ImportPanel: View {
                 .keyboardShortcut(.defaultAction)
                 .controlSize(.large)
                 .disabled(validFiles.isEmpty || !preflightOK || isStarting)
+            }
+        }
+        .sheet(isPresented: Binding(get: { checkingLink != nil }, set: { if !$0 { checkingLink = nil } })) {
+            if let link = checkingLink {
+                YouTubeImportSheet(link: link, options: options) { _ in youtubeLink = "" }
+                    .environmentObject(model)
             }
         }
         .task(id: options) { await runPreflight() }
@@ -146,6 +155,26 @@ struct ImportPanel: View {
                 .font(.callout)
             }
         }
+    }
+
+    /// A YouTube link, imported with the settings below once checked.
+    private var youtubeRow: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "play.rectangle").foregroundStyle(.secondary)
+            TextField("Or paste a YouTube link (a video you are authorized to download)", text: $youtubeLink)
+                .textFieldStyle(.roundedBorder)
+                .onSubmit { checkLink() }
+            Button("Check Link…", action: checkLink)
+                .disabled(youtubeLink.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !preflightOK)
+                .help(preflightOK ? "Shows the video, its licence and captions before anything is retrieved"
+                                  : "Choose settings that can run first (see below)")
+        }
+    }
+
+    private func checkLink() {
+        let link = youtubeLink.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !link.isEmpty, preflightOK else { return }
+        checkingLink = link
     }
 
     // MARK: Options

@@ -71,7 +71,8 @@ def _project_row_to_dict(row, segment_count: int | None = None) -> dict[str, Any
         "duration": row["duration"],
         "has_video": bool(row["has_video"]),
         "language": row["language"],
-        "media": json.loads(row["media_info_json"]),
+        # None until a URL project's media has been retrieved
+        "media": json.loads(row["media_info_json"]) or None,
         "last_job_id": row["last_job_id"],
         "segment_count": segment_count if segment_count is not None else 0,
         "source_meta": json.loads(row["source_meta_json"]) if row["source_meta_json"] else None,

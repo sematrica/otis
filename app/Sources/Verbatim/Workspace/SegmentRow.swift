@@ -483,6 +483,18 @@ struct FlagStrip: View {
                             detail: "Other wordings the audio supports about as well\(why): \(texts.joined(separator: ", ")). "
                                 + "Choose one with Use Wording, or keep this one.", color: .orange))
         }
+        if let flag = segment.flag("captions_differ") {
+            let caption = flag.lookup("caption_text")?.stringValue ?? ""
+            let who = flag.lookup("source")?.stringValue == "auto" ? "YouTube's automatic captions" : "The creator's captions"
+            out.append(Item(symbol: "captions.bubble", label: "Captions differ",
+                            detail: "\(who) say here: “\(caption)”. Captions may be condensed or come from another "
+                                + "recogniser; listen to decide.", color: .secondary))
+        }
+        if let flag = segment.flag("in_sponsor_chapter") {
+            out.append(Item(symbol: "megaphone", label: "Sponsor chapter",
+                            detail: "In the creator's chapter “\(flag.lookup("title")?.stringValue ?? "")”: an ad or "
+                                + "sponsor message that is part of the video itself.", color: .secondary))
+        }
         if let flag = segment.flag("missing_speech") {
             let start = flag.lookup("start")?.doubleValue ?? segment.end
             let end = flag.lookup("end")?.doubleValue ?? start

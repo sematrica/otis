@@ -261,14 +261,12 @@ class EngineService:
                                                            "duration", "upload_date", "license", "language",
                                                            "chapters", "sponsor_chapters", "ads_note")},
             "authorization": {"confirmed_at": utc_now(), "statement": AUTHORIZATION_STATEMENT},
-            "requested": {"media": "video" if video else "audio", "captions": [
-                {k: t[k] for k in ("language", "kind")} for t in tracks]},
+            "requested": {"media": "video" if video else "audio", "caption_tracks": tracks},
         }
         title = (params.get("title") or inspected["title"] or target.video_id or "YouTube video").strip()[:300]
         project = repo.create_url_project(self.db, target.url, title, meta, has_video=video)
-        job_options = {**options, "youtube": {"video": video, "captions": tracks}}
-        job = repo.create_job(self.db, project["id"], options["mode"], job_options, kind="youtube")
-        self.jobs.announce_new(job["id"])
+        job = self.jobs.submit(project["id"], {**options, "youtube": {"video": video, "captions": tracks}},
+                               kind="youtube")
         project = repo.get_project(self.db, project["id"])
         self.notify("project.updated", project)
         return {"project": project, "job": job}
@@ -303,6 +301,13 @@ class EngineService:
         project_id = _require(params, "project_id")
         options = normalize_options(params.get("options"))
         resolve(options, self.models)  # refuse to queue a job that cannot run
+        project = repo.get_project(self.db, project_id)
+        if project["source"]["kind"] == "url" and not project["source"]["path"]:
+            # the media was never retrieved (e.g. the first attempt failed): retrieve it again first
+            requested = (project.get("source_meta") or {}).get("requested") or {}
+            youtube = {"video": requested.get("media", "video") == "video",
+                       "captions": requested.get("caption_tracks") or []}
+            return self.jobs.submit(project_id, {**options, "youtube": youtube}, kind="youtube")
         return self.jobs.submit(project_id, options)
 
     def jobs_list(self, params: dict[str, Any]) -> dict[str, Any]:

@@ -111,6 +111,34 @@ public struct QueuePauseParams: Encodable, Sendable { public let interrupt: Bool
 public struct QueueReorderParams: Encodable, Sendable { public let jobIds: [String] }
 public struct EnabledParams: Encodable, Sendable { public let enabled: Bool }
 
+public struct URLParams: Encodable, Sendable { public let url: String }
+
+public struct CaptionChoice: Codable, Hashable, Sendable {
+    public let language: String
+    public let kind: String
+    public init(language: String, kind: String) {
+        self.language = language
+        self.kind = kind
+    }
+}
+
+public struct CreateFromYouTubeParams: Encodable, Sendable {
+    public let url: String
+    /// The user confirmed they may retrieve this video.
+    public let authorized: Bool
+    public let options: JobOptions
+    public let media: String
+    public let captions: [CaptionChoice]
+    public let title: String?
+}
+
+public struct CaptionExportParams: Encodable, Sendable {
+    public let projectId: String
+    public let captionId: Int
+    public let format: String
+    public let path: String?
+}
+
 public struct SearchParams: Encodable, Sendable {
     public let query: String
     public let projectId: String?
@@ -306,6 +334,37 @@ public extension EngineClient {
 
     private func edit<Params: Encodable & Sendable>(_ method: String, _ params: Params) async throws -> EditResult {
         try await call(method, params: params, as: EditResult.self, timeout: .seconds(120))
+    }
+
+    /// Validates a YouTube link and reads its metadata (network; nothing is downloaded).
+    func inspectYouTube(_ url: String) async throws -> YouTubeInspection {
+        try await call("youtube.inspect", params: URLParams(url: url), as: YouTubeInspection.self, timeout: .seconds(90))
+    }
+
+    /// Creates the project and queues the retrieval and transcription.
+    func createFromYouTube(_ url: String, authorized: Bool, options: JobOptions, audioOnly: Bool,
+                           captions: [CaptionChoice], title: String? = nil) async throws -> CreatedFromYouTube {
+        try await call("projects.createFromYouTube",
+                       params: CreateFromYouTubeParams(url: url, authorized: authorized, options: options,
+                                                       media: audioOnly ? "audio" : "video", captions: captions,
+                                                       title: title),
+                       as: CreatedFromYouTube.self, timeout: .seconds(90))
+    }
+
+    func captions(projectId: String) async throws -> [CaptionInfo] {
+        try await call("captions.list", params: ProjectIDParams(projectId: projectId), as: CaptionsResult.self).captions
+    }
+
+    func writeCaptions(projectId: String, captionId: Int, format: String, to path: String) async throws -> ExportWritten {
+        try await call("captions.export",
+                       params: CaptionExportParams(projectId: projectId, captionId: captionId, format: format, path: path),
+                       as: ExportWritten.self)
+    }
+
+    func renderCaptions(projectId: String, captionId: Int, format: String) async throws -> ExportRendered {
+        try await call("captions.export",
+                       params: CaptionExportParams(projectId: projectId, captionId: captionId, format: format, path: nil),
+                       as: ExportRendered.self)
     }
 
     func queueState() async throws -> QueueState { try await call("queue.get", as: QueueState.self) }

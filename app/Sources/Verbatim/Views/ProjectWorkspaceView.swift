@@ -16,6 +16,7 @@ struct ProjectWorkspaceView: View {
     @State private var confirmDelete = false
     @State private var transcribingAgain = false
     @State private var reviewingWithAI = false
+    @State private var captions: [CaptionInfo] = []
 
     init(projectID: String) {
         self.projectID = projectID
@@ -29,6 +30,9 @@ struct ProjectWorkspaceView: View {
                 .toolbar { toolbar(project) }
                 .task(id: model.transcriptRevision[projectID, default: 0]) {
                     await workspace.refresh(knownRevision: model.knownTranscriptRevision[projectID])
+                    if project.isFromYouTube {
+                        captions = (try? await model.client.captions(projectId: projectID)) ?? []
+                    }
                     if let focus = model.pendingFocus.removeValue(forKey: projectID) {
                         // opened from a search result: find the words, show the passage, cue the player
                         workspace.searchText = focus.query
@@ -38,6 +42,8 @@ struct ProjectWorkspaceView: View {
                     }
                 }
                 .onAppear { player.load(project.sourceURL) }
+                // a YouTube project's media arrives after its retrieval
+                .onChange(of: project.source.path) { _ in player.load(project.sourceURL) }
                 .onDisappear { player.stop() }
                 .focusedSceneValue(\.transcriptCommands, TranscriptCommands(workspace: workspace, player: player))
                 .alert("Rename Project", isPresented: $isRenaming) {
@@ -94,6 +100,16 @@ struct ProjectWorkspaceView: View {
                 }
                 Button("CSV, One Row per Word") {
                     Task { await model.export(project, format: .csv, options: ExportOptions(words: true)) }
+                }
+                if !captions.isEmpty {
+                    Divider()
+                    Section("Published captions (not the transcript)") {
+                        ForEach(captions) { track in
+                            let name = "\(track.name ?? track.language)\(track.kind == "auto" ? " (automatic)" : "")"
+                            Button("\(name) as SRT") { Task { await model.exportCaptions(project, track: track, format: "srt") } }
+                            Button("\(name) as WebVTT") { Task { await model.exportCaptions(project, track: track, format: "vtt") } }
+                        }
+                    }
                 }
             } label: {
                 Label("Export", systemImage: "square.and.arrow.up")
@@ -276,20 +292,42 @@ private struct MediaFacts: View {
                 Text("Duration").foregroundStyle(.secondary)
                 Text(Timecode.duration(project.duration))
             }
-            GridRow {
-                Text("Format").foregroundStyle(.secondary)
-                Text(project.media.formatLongName).lineLimit(1)
-            }
-            if let audio = project.media.audioStreams.first(where: { $0.index == project.media.selectedAudioStream }) {
+            if let media = project.media {
                 GridRow {
-                    Text("Audio").foregroundStyle(.secondary)
-                    Text("\(audio.codec), \(audio.sampleRate) Hz, \(audio.channels) ch")
+                    Text("Format").foregroundStyle(.secondary)
+                    Text(media.formatLongName).lineLimit(1)
+                }
+                if let audio = media.audioStreams.first(where: { $0.index == media.selectedAudioStream }) {
+                    GridRow {
+                        Text("Audio").foregroundStyle(.secondary)
+                        Text("\(audio.codec), \(audio.sampleRate) Hz, \(audio.channels) ch")
+                    }
+                }
+                if let video = media.videoStreams.first {
+                    GridRow {
+                        Text("Video").foregroundStyle(.secondary)
+                        Text("\(video.codec), \(video.width)×\(video.height)")
+                    }
                 }
             }
-            if let video = project.media.videoStreams.first {
+            if project.isFromYouTube, let meta = project.sourceMeta {
                 GridRow {
-                    Text("Video").foregroundStyle(.secondary)
-                    Text("\(video.codec), \(video.width)×\(video.height)")
+                    Text("YouTube").foregroundStyle(.secondary)
+                    if let link = meta.lookup("url")?.stringValue, let url = URL(string: link) {
+                        Link(meta.lookup("channel")?.stringValue ?? link, destination: url).lineLimit(1)
+                    }
+                }
+                if let license = meta.lookup("license")?.stringValue {
+                    GridRow {
+                        Text("Licence").foregroundStyle(.secondary)
+                        Text(license).lineLimit(2)
+                    }
+                }
+                if let note = meta.lookup("ads_note")?.stringValue {
+                    GridRow {
+                        Text("Ads").foregroundStyle(.secondary)
+                        Text(note).lineLimit(4).fixedSize(horizontal: false, vertical: true)
+                    }
                 }
             }
             GridRow {

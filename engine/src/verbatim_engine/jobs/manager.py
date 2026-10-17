@@ -186,22 +186,19 @@ class JobManager:
 
     # ------------------------------------------------------------------ commands
 
-    def submit(self, project_id: str, options: dict[str, Any] | None) -> dict[str, Any]:
-        normalized = normalize_options(options)
+    def submit(self, project_id: str, options: dict[str, Any] | None, kind: str = "transcribe") -> dict[str, Any]:
+        """Queue a job. A ``youtube`` job carries the retrieval request in
+        ``options["youtube"]`` next to the normalized options."""
+        extra = {"youtube": (options or {}).get("youtube")} if kind == "youtube" else {}
+        normalized = normalize_options({k: v for k, v in (options or {}).items() if k != "youtube"})
         active = repo.list_jobs(self.db, statuses=["queued", "running"], project_id=project_id, limit=1)
         if active:
             raise InvalidJobState("This project already has a job in progress.", data={"job_id": active[0]["id"]})
-        job = repo.create_job(self.db, project_id, normalized["mode"], normalized)
+        job = repo.create_job(self.db, project_id, normalized["mode"], {**normalized, **extra}, kind=kind)
         self._announce(job["id"])
         self._queue_changed()
         self._wake.set()
         return job
-
-    def announce_new(self, job_id: str) -> None:
-        """A job created elsewhere (a YouTube import) was queued."""
-        self._announce(job_id)
-        self._queue_changed()
-        self._wake.set()
 
     def submit_recheck(self, project_id: str, segment_ids: list[int]) -> dict[str, Any]:
         """Re-check chosen passages of the current transcript (passes 6-7), with

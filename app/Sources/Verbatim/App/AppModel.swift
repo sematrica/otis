@@ -179,6 +179,12 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// A YouTube project was created and its first job queued.
+    func noteCreated(_ created: CreatedFromYouTube) {
+        upsert(created.project)
+        jobs[created.job.id] = created.job
+    }
+
     private func upsert(_ project: Project) {
         if let index = projects.firstIndex(where: { $0.id == project.id }) {
             projects[index] = project
@@ -359,6 +365,21 @@ final class AppModel: ObservableObject {
     /// The transcript with its words, as the workspace loads it.
     func transcript(for project: Project) async throws -> Transcript {
         try await client.transcript(projectId: project.id, includeWords: true)
+    }
+
+    /// Saves a caption track exactly as it was published (not the transcript).
+    func exportCaptions(_ project: Project, track: CaptionInfo, format: String) async {
+        do {
+            let preview = try await client.renderCaptions(projectId: project.id, captionId: track.id, format: format)
+            let panel = NSSavePanel()
+            panel.nameFieldStringValue = preview.suggestedFilename
+            panel.allowedContentTypes = [UTType(filenameExtension: format) ?? .plainText]
+            panel.canCreateDirectories = true
+            guard panel.runModal() == .OK, let url = panel.url else { return }
+            _ = try await client.writeCaptions(projectId: project.id, captionId: track.id, format: format, to: url.path)
+        } catch {
+            report(error, title: "Export failed")
+        }
     }
 
     /// Asks where to save, then has the engine write the file (atomically).
