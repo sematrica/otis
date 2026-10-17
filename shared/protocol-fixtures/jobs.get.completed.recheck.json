@@ -1,9 +1,9 @@
 {
-  "id": 156,
+  "id": 142,
   "result": {
     "attempt": 1,
     "cancel_requested": false,
-    "created_at": "2026-10-17T02:58:30.305Z",
+    "created_at": "2026-10-17T03:24:37.448Z",
     "current_stage": "finalize",
     "effective": {
       "recheck": {
@@ -25,10 +25,10 @@
         "windows": 1
       }
     },
-    "elapsed_seconds": 20.352,
+    "elapsed_seconds": 16.797,
     "error": null,
-    "finished_at": "2026-10-17T02:58:50.659Z",
-    "id": "e7c3100ec6744f98893da3532340953c",
+    "finished_at": "2026-10-17T03:24:54.247Z",
+    "id": "f386201b107942d5b2de4bc56780d015",
     "kind": "recheck",
     "mode": "maximum",
     "options": {
@@ -47,7 +47,7 @@
           3,
           4
         ],
-        "source_job": "1d8d3ea55cd04f91b0a7009047e7546f"
+        "source_job": "1aa86f4242cf41cba0c4c77e02b87707"
       },
       "speakers": {
         "max": null,
@@ -56,26 +56,26 @@
       },
       "vad": true
     },
-    "project_id": "15ae7d8705bc454caa4381d0f8ea8dee",
+    "project_id": "877b9d9934364b73b86e5e74f3723d54",
     "project_title": "Call",
     "stages": [
       {
         "detail": "2 passage(s) to re-check",
-        "elapsed_seconds": 0.003,
+        "elapsed_seconds": 0.004,
         "eta_seconds": null,
-        "finished_at": "2026-10-17T02:58:30.451Z",
+        "finished_at": "2026-10-17T03:24:37.570Z",
         "fraction": null,
         "label": "Checking source",
         "progress": null,
         "stage": "prepare",
-        "started_at": "2026-10-17T02:58:30.448Z",
+        "started_at": "2026-10-17T03:24:37.566Z",
         "status": "completed"
       },
       {
         "detail": "First-pass wording kept everywhere.",
-        "elapsed_seconds": 20.207,
+        "elapsed_seconds": 16.676,
         "eta_seconds": null,
-        "finished_at": "2026-10-17T02:58:50.658Z",
+        "finished_at": "2026-10-17T03:24:54.246Z",
         "fraction": 1.0,
         "label": "Re-checking doubtful passages",
         "progress": {
@@ -84,24 +84,24 @@
           "unit": "decodes"
         },
         "stage": "retranscribe",
-        "started_at": "2026-10-17T02:58:30.451Z",
+        "started_at": "2026-10-17T03:24:37.570Z",
         "status": "completed"
       },
       {
         "detail": "Re-check 2 passages: First-pass wording kept everywhere.",
         "elapsed_seconds": 0.001,
         "eta_seconds": null,
-        "finished_at": "2026-10-17T02:58:50.659Z",
+        "finished_at": "2026-10-17T03:24:54.247Z",
         "fraction": null,
         "label": "Saving transcript",
         "progress": null,
         "stage": "finalize",
-        "started_at": "2026-10-17T02:58:50.658Z",
+        "started_at": "2026-10-17T03:24:54.246Z",
         "status": "completed"
       }
     ],
-    "started_at": "2026-10-17T02:58:30.307Z",
+    "started_at": "2026-10-17T03:24:37.450Z",
     "status": "completed",
-    "updated_at": "2026-10-17T02:58:50.659Z"
+    "updated_at": "2026-10-17T03:24:54.247Z"
   }
 }

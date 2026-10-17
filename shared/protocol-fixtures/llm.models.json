@@ -1,0 +1,11 @@
+{
+  "id": 148,
+  "result": {
+    "endpoint": "http://127.0.0.1:11434",
+    "models": [
+      "qwen2.5:0.5b"
+    ],
+    "provider": "ollama",
+    "remote": false
+  }
+}

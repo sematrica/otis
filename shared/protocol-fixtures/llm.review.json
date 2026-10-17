@@ -1,0 +1,19 @@
+{
+  "id": 150,
+  "result": {
+    "endpoint": "http://127.0.0.1:11434",
+    "error": null,
+    "finished_at": null,
+    "id": 1,
+    "model": "qwen2.5:0.5b",
+    "project_id": "877b9d9934364b73b86e5e74f3723d54",
+    "provider": "ollama",
+    "remote": false,
+    "requests": 0,
+    "segments_sent": 0,
+    "started_at": "2026-10-17T03:24:54.503Z",
+    "status": "running",
+    "suggestions": {},
+    "transcript_revision": 8
+  }
+}

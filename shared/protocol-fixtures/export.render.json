@@ -1,7 +1,7 @@
 {
   "id": 26,
   "result": {
-    "content": "JFK\nSource: jfk.wav\nDuration: 00:00:11\nLanguage: en\nTranscribed with: Custom model (small-int8) (faster-whisper)\n\n[00:00:00] And so my fellow Americans, ask not what your country can do for you.\n[00:00:07] Ask what you can do for your country.\n",
+    "content": "JFK\nSource: jfk.wav\nDuration: 00:00:11\nLanguage: en\nTranscribed with: Custom model (small) (faster-whisper)\n\n[00:00:00] And so, my fellow Americans, ask not what your country can do for you.\n[00:00:08] Ask what you can do for your country.\n",
     "suggested_filename": "JFK.txt"
   }
 }

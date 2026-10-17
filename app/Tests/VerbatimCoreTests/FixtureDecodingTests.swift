@@ -228,4 +228,39 @@ final class FixtureDecodingTests: XCTestCase {
         let missing = try EngineClient.makeDecoder().decode(Failure.self, from: data("error.recheck_segment_not_found")).error
         XCTAssertEqual(missing.code, "not_found")
     }
+
+    /// An AI review with a small local model (Ollama), captured in CI.
+    func testAIReviewIsLocalTraceableAndValidated() throws {
+        let models = try result("llm.models", as: LLMModelsResult.self)
+        XCTAssertEqual(models.provider, "ollama")
+        XCTAssertFalse(models.remote)
+        XCTAssertFalse(models.models.isEmpty)
+
+        let started = try result("llm.review", as: LLMRun.self)
+        XCTAssertTrue(started.isRunning)
+        XCTAssertFalse(started.remote)
+        let run = try result("llm.run", as: LLMRun.self)
+        XCTAssertEqual(run.id, started.id)
+        XCTAssertEqual(run.status, "completed")
+        // every request and the model's answer are kept
+        let exchanges = try XCTUnwrap(run.exchanges)
+        XCTAssertEqual(exchanges.count, run.requests)
+        XCTAssertTrue(exchanges.allSatisfy { $0.response != nil && $0.request.lookup("user")?.stringValue != nil })
+        XCTAssertEqual(try result("llm.runs", as: LLMRunsResult.self).runs.first?.id, run.id)
+
+        // suggestions are stored for review; the invalid ones say why
+        let suggestions = try result("suggestions.list", as: SuggestionsResult.self).suggestions
+        XCTAssertEqual(suggestions.count, run.suggestions?.values.reduce(0, +))
+        XCTAssertTrue(suggestions.allSatisfy { ["pending", "invalid"].contains($0.status) && $0.runId == run.id })
+        XCTAssertTrue(suggestions.filter { $0.status == "invalid" }.allSatisfy { !($0.validation ?? "").isEmpty })
+
+        let note = try EngineClient.makeDecoder().decode(Note<LLMRun>.self, from: data("notification.llm.run.updated"))
+        XCTAssertEqual(note.method, "llm.run.updated")
+        XCTAssertEqual(note.params.id, run.id)
+
+        // a remote endpoint is refused until the user allows it
+        let refused = try EngineClient.makeDecoder().decode(Failure.self, from: data("error.llm_remote_not_allowed")).error
+        XCTAssertEqual(refused.code, "invalid_params")
+        XCTAssertEqual(refused.data?.lookup("remote"), .bool(true))
+    }
 }

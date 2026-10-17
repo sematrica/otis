@@ -1,0 +1,35 @@
+{
+  "id": 159,
+  "result": {
+    "endpoint": "http://127.0.0.1:11434",
+    "error": null,
+    "exchanges": [
+      {
+        "error": null,
+        "request": {
+          "endpoint": "http://127.0.0.1:11434",
+          "model": "qwen2.5:0.5b",
+          "provider": "ollama",
+          "system": "You help a person check an automatic speech-recognition transcript against the original recording. You only see the text; you cannot hear the audio, so you must never decide what was said.\n\nEach line of the transcript has the form [ID] Speaker: text. Report problems as suggestions:\n\n- \"suspicious\": the passage reads like a recognition error (words that make no sense in context, garbled phrases, sign-off phrases that look out of place). Put an empty string in \"text\" and \"term\".\n- \"punctuation\": the passage needs different punctuation or capital letters. Put the complete passage with corrected punctuation and capitals in \"text\". Keep every word exactly as it is: do not add, remove, reorder or change any word. Put an empty string in \"term\".\n- \"terminology\": a name or technical term is spelled differently here than elsewhere in the transcript. Put the spelling used in this passage in \"term\" and the spelling to use instead in \"text\".\n- \"retranscribe\": the passage should be decoded again from the audio (likely misheard). Put an empty string in \"text\" and \"term\".\n\nAlways explain briefly in \"reason\". Never rewrite or paraphrase what people said. If nothing needs attention, return an empty list. Answer with JSON only: {\"suggestions\": [{\"segment_id\", \"kind\", \"text\", \"term\", \"reason\"}]}.",
+          "user": "Transcript:\n[3] Diane: Hello. Hello. Oh,\n[4] Speaker 2: hello. I didn't know you were there.\n[5] Diane: Neither did\n[6] Speaker 2: I. Okay, I thought, you know, I heard it deep.\n[7] Speaker 2: This is Diane in New Jersey. And\n[8] Diane: I'm Sheila in Texas, originally from Chicago.\n[9] Speaker 2: Oh, I'm originally from Chicago also. I'm in New Jersey now, though.\n[10] Diane: Well, there is not much difference. At least, you know, they all call me a Yankee down here, so what kind\n[11] Speaker 2: of thing?\n[12] Speaker 2: Oh, I don't hear that in New Jersey now."
+        },
+        "response": "{\"suggestions\": [{\"segment_id\": 1, \"kind\": \"punctuation\", \"text\": \"Oh, I'm originally from Chicago also.\", \"term\": \"Oh, I'm originally from Chicago also.\", \"reason\": \"The speaker is repeating the name 'Diane' in the same way as in the previous line.\"}, {\"segment_id\": 2, \"kind\": \"terminology\", \"text\": \"of thing\", \"term\": \"of thing\", \"reason\": \"The term 'thing' is not used in the transcript.\"}, {\"segment_id\": 3, \"kind\": \"punctuation\", \"text\": \"Oh, I don't hear that in New Jersey now.\", \"term\": \"Oh, I don't hear that in New Jersey now.\", \"reason\": \"The speaker is repeating the phrase 'I don't hear that in New Jersey now.'\"}]}",
+        "seconds": 3.98
+      }
+    ],
+    "finished_at": "2026-10-17T03:24:58.484Z",
+    "id": 1,
+    "model": "qwen2.5:0.5b",
+    "project_id": "877b9d9934364b73b86e5e74f3723d54",
+    "provider": "ollama",
+    "remote": false,
+    "requests": 1,
+    "segments_sent": 10,
+    "started_at": "2026-10-17T03:24:54.503Z",
+    "status": "completed",
+    "suggestions": {
+      "invalid": 3
+    },
+    "transcript_revision": 8
+  }
+}

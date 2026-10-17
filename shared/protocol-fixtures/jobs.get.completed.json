@@ -3,7 +3,7 @@
   "result": {
     "attempt": 1,
     "cancel_requested": false,
-    "created_at": "2026-10-17T02:58:11.540Z",
+    "created_at": "2026-10-17T03:24:19.335Z",
     "current_stage": "finalize",
     "effective": {
       "alignment": {
@@ -49,7 +49,7 @@
       },
       "mode": "balanced",
       "model": {
-        "display_name": "Custom model (small-int8)",
+        "display_name": "Custom model (small)",
         "id": null,
         "path": "/Users/example/Models/faster-whisper-small",
         "revision": null
@@ -81,10 +81,10 @@
       },
       "warnings": []
     },
-    "elapsed_seconds": 3.828,
+    "elapsed_seconds": 3.854,
     "error": null,
-    "finished_at": "2026-10-17T02:58:15.370Z",
-    "id": "128f38283d034c49ada2e0e52ad664f0",
+    "finished_at": "2026-10-17T03:24:23.192Z",
+    "id": "7d59139791a04cd5b9fdf50e69e1ad5b",
     "kind": "transcribe",
     "mode": "balanced",
     "options": {
@@ -105,26 +105,26 @@
       },
       "vad": true
     },
-    "project_id": "732d3865188444d690912bc7f4365d6b",
+    "project_id": "0189ac266cdc4358b70cce2dc95edef0",
     "project_title": "JFK",
     "stages": [
       {
         "detail": null,
-        "elapsed_seconds": 0.0,
+        "elapsed_seconds": 0.004,
         "eta_seconds": null,
-        "finished_at": "2026-10-17T02:58:11.684Z",
+        "finished_at": "2026-10-17T03:24:19.458Z",
         "fraction": null,
         "label": "Checking source",
         "progress": null,
         "stage": "prepare",
-        "started_at": "2026-10-17T02:58:11.684Z",
+        "started_at": "2026-10-17T03:24:19.454Z",
         "status": "completed"
       },
       {
         "detail": null,
-        "elapsed_seconds": 0.068,
+        "elapsed_seconds": 0.045,
         "eta_seconds": null,
-        "finished_at": "2026-10-17T02:58:11.752Z",
+        "finished_at": "2026-10-17T03:24:19.503Z",
         "fraction": 1.0,
         "label": "Extracting audio",
         "progress": {
@@ -133,14 +133,14 @@
           "unit": "seconds"
         },
         "stage": "extract",
-        "started_at": "2026-10-17T02:58:11.684Z",
+        "started_at": "2026-10-17T03:24:19.458Z",
         "status": "completed"
       },
       {
         "detail": "1 chunk(s)",
-        "elapsed_seconds": 0.0,
+        "elapsed_seconds": 0.001,
         "eta_seconds": null,
-        "finished_at": "2026-10-17T02:58:11.752Z",
+        "finished_at": "2026-10-17T03:24:19.504Z",
         "fraction": 1.0,
         "label": "Analyzing audio",
         "progress": {
@@ -149,26 +149,26 @@
           "unit": "seconds"
         },
         "stage": "analyze",
-        "started_at": "2026-10-17T02:58:11.752Z",
+        "started_at": "2026-10-17T03:24:19.503Z",
         "status": "completed"
       },
       {
-        "detail": "Custom model (small-int8) on faster-whisper (CPU)",
-        "elapsed_seconds": 0.403,
+        "detail": "Custom model (small) on faster-whisper (CPU)",
+        "elapsed_seconds": 0.626,
         "eta_seconds": null,
-        "finished_at": "2026-10-17T02:58:12.156Z",
+        "finished_at": "2026-10-17T03:24:20.130Z",
         "fraction": null,
         "label": "Loading model",
         "progress": null,
         "stage": "load_model",
-        "started_at": "2026-10-17T02:58:11.753Z",
+        "started_at": "2026-10-17T03:24:19.504Z",
         "status": "completed"
       },
       {
         "detail": "1 of 1 chunk(s) done",
-        "elapsed_seconds": 3.192,
+        "elapsed_seconds": 3.039,
         "eta_seconds": null,
-        "finished_at": "2026-10-17T02:58:15.348Z",
+        "finished_at": "2026-10-17T03:24:23.169Z",
         "fraction": 1.0,
         "label": "Transcribing",
         "progress": {
@@ -177,38 +177,38 @@
           "unit": "seconds"
         },
         "stage": "transcribe",
-        "started_at": "2026-10-17T02:58:12.156Z",
+        "started_at": "2026-10-17T03:24:20.130Z",
         "status": "completed"
       },
       {
         "detail": "The speaker identification model is not installed.",
         "elapsed_seconds": 0.0,
         "eta_seconds": null,
-        "finished_at": "2026-10-17T02:58:15.349Z",
+        "finished_at": "2026-10-17T03:24:23.170Z",
         "fraction": null,
         "label": "Identifying speakers",
         "progress": null,
         "stage": "diarize",
-        "started_at": "2026-10-17T02:58:15.349Z",
+        "started_at": "2026-10-17T03:24:23.170Z",
         "status": "skipped"
       },
       {
         "detail": "No word-alignment model is installed; word times come from Whisper.",
-        "elapsed_seconds": 0.001,
+        "elapsed_seconds": 0.0,
         "eta_seconds": null,
-        "finished_at": "2026-10-17T02:58:15.350Z",
+        "finished_at": "2026-10-17T03:24:23.170Z",
         "fraction": null,
         "label": "Aligning words",
         "progress": null,
         "stage": "align",
-        "started_at": "2026-10-17T02:58:15.349Z",
+        "started_at": "2026-10-17T03:24:23.170Z",
         "status": "skipped"
       },
       {
         "detail": "No doubtful passages found.",
-        "elapsed_seconds": 0.018,
+        "elapsed_seconds": 0.02,
         "eta_seconds": null,
-        "finished_at": "2026-10-17T02:58:15.368Z",
+        "finished_at": "2026-10-17T03:24:23.190Z",
         "fraction": 0.0,
         "label": "Checking quality",
         "progress": {
@@ -217,48 +217,48 @@
           "unit": "seconds"
         },
         "stage": "quality",
-        "started_at": "2026-10-17T02:58:15.350Z",
+        "started_at": "2026-10-17T03:24:23.170Z",
         "status": "completed"
       },
       {
         "detail": "Re-checking doubtful passages runs in Maximum Accuracy mode.",
         "elapsed_seconds": 0.0,
         "eta_seconds": null,
-        "finished_at": "2026-10-17T02:58:15.368Z",
+        "finished_at": "2026-10-17T03:24:23.190Z",
         "fraction": null,
         "label": "Re-checking doubtful passages",
         "progress": null,
         "stage": "retranscribe",
-        "started_at": "2026-10-17T02:58:15.368Z",
+        "started_at": "2026-10-17T03:24:23.190Z",
         "status": "skipped"
       },
       {
         "detail": "0 passage(s) to review",
         "elapsed_seconds": 0.001,
         "eta_seconds": null,
-        "finished_at": "2026-10-17T02:58:15.369Z",
+        "finished_at": "2026-10-17T03:24:23.191Z",
         "fraction": null,
         "label": "Validating transcript",
         "progress": null,
         "stage": "validate",
-        "started_at": "2026-10-17T02:58:15.368Z",
+        "started_at": "2026-10-17T03:24:23.190Z",
         "status": "completed"
       },
       {
         "detail": "2 segment(s)",
         "elapsed_seconds": 0.001,
         "eta_seconds": null,
-        "finished_at": "2026-10-17T02:58:15.370Z",
+        "finished_at": "2026-10-17T03:24:23.192Z",
         "fraction": null,
         "label": "Saving transcript",
         "progress": null,
         "stage": "finalize",
-        "started_at": "2026-10-17T02:58:15.369Z",
+        "started_at": "2026-10-17T03:24:23.191Z",
         "status": "completed"
       }
     ],
-    "started_at": "2026-10-17T02:58:11.542Z",
+    "started_at": "2026-10-17T03:24:19.338Z",
     "status": "completed",
-    "updated_at": "2026-10-17T02:58:15.370Z"
+    "updated_at": "2026-10-17T03:24:23.192Z"
   }
 }
