@@ -1,0 +1,12 @@
+{
+  "method": "queue.updated",
+  "params": {
+    "auto_resume": true,
+    "paused": true,
+    "queued": [
+      "331873bcdd30403b82e2410652874afc",
+      "8e49cf7a09c34862a944841911a60741"
+    ],
+    "running": "e76170e57a6c41c7a9aef5e1562c7313"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "error": {
+    "code": "invalid_params",
+    "data": {
+      "reason": "url"
+    },
+    "message": "Only YouTube links can be imported. For other media, download it where you are allowed to and import the file."
+  },
+  "id": 69
+}

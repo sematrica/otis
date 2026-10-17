@@ -1,0 +1,35 @@
+{
+  "id": 70,
+  "result": {
+    "ads_note": "Transcribed from the media file retrieved from YouTube. Ads that YouTube inserts while a video plays are not part of that file and are not transcribed. Sponsor messages or ads that are part of the video itself are transcribed like any other speech.",
+    "approx_bytes": {
+      "audio": null,
+      "video": null
+    },
+    "availability": null,
+    "captions": [
+      {
+        "formats": [
+          "vtt"
+        ],
+        "kind": "manual",
+        "language": "en",
+        "name": "en"
+      }
+    ],
+    "channel": null,
+    "channel_url": null,
+    "chapters": [],
+    "duration": null,
+    "language": null,
+    "license": null,
+    "live_status": null,
+    "refusal": null,
+    "sponsor_chapters": [],
+    "thumbnail": null,
+    "title": "JFK talk (1)",
+    "upload_date": "20261017",
+    "url": "http://127.0.0.1:8000/index.html",
+    "video_id": "index-1"
+  }
+}

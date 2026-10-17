@@ -1,0 +1,253 @@
+{
+  "id": 72,
+  "result": {
+    "job": {
+      "attempt": 0,
+      "cancel_requested": false,
+      "created_at": "2026-10-17T04:30:03.700Z",
+      "current_stage": null,
+      "effective": null,
+      "elapsed_seconds": null,
+      "error": null,
+      "finished_at": null,
+      "id": "a21e21e6fefe4ae192a3681c6291cf18",
+      "kind": "youtube",
+      "mode": "balanced",
+      "options": {
+        "align": "auto",
+        "alignment_model": null,
+        "backend": "faster-whisper",
+        "chunk_seconds": 600.0,
+        "diarize": "auto",
+        "language": null,
+        "mode": "balanced",
+        "model_id": null,
+        "model_path": "/Users/example/Models/faster-whisper-small",
+        "recheck": "auto",
+        "speakers": {
+          "max": null,
+          "min": null,
+          "num": null
+        },
+        "vad": true,
+        "youtube": {
+          "captions": [
+            {
+              "formats": [
+                "vtt"
+              ],
+              "kind": "manual",
+              "language": "en",
+              "name": "en"
+            }
+          ],
+          "video": false
+        }
+      },
+      "project_id": "aaef71378b094602ad6386da353e7fa0",
+      "project_title": "JFK talk (1)",
+      "queue_position": 1,
+      "stages": [
+        {
+          "detail": null,
+          "elapsed_seconds": null,
+          "eta_seconds": null,
+          "finished_at": null,
+          "fraction": null,
+          "label": "Retrieving from YouTube",
+          "progress": null,
+          "stage": "download",
+          "started_at": null,
+          "status": "pending"
+        },
+        {
+          "detail": null,
+          "elapsed_seconds": null,
+          "eta_seconds": null,
+          "finished_at": null,
+          "fraction": null,
+          "label": "Checking source",
+          "progress": null,
+          "stage": "prepare",
+          "started_at": null,
+          "status": "pending"
+        },
+        {
+          "detail": null,
+          "elapsed_seconds": null,
+          "eta_seconds": null,
+          "finished_at": null,
+          "fraction": null,
+          "label": "Extracting audio",
+          "progress": null,
+          "stage": "extract",
+          "started_at": null,
+          "status": "pending"
+        },
+        {
+          "detail": null,
+          "elapsed_seconds": null,
+          "eta_seconds": null,
+          "finished_at": null,
+          "fraction": null,
+          "label": "Analyzing audio",
+          "progress": null,
+          "stage": "analyze",
+          "started_at": null,
+          "status": "pending"
+        },
+        {
+          "detail": null,
+          "elapsed_seconds": null,
+          "eta_seconds": null,
+          "finished_at": null,
+          "fraction": null,
+          "label": "Loading model",
+          "progress": null,
+          "stage": "load_model",
+          "started_at": null,
+          "status": "pending"
+        },
+        {
+          "detail": null,
+          "elapsed_seconds": null,
+          "eta_seconds": null,
+          "finished_at": null,
+          "fraction": null,
+          "label": "Transcribing",
+          "progress": null,
+          "stage": "transcribe",
+          "started_at": null,
+          "status": "pending"
+        },
+        {
+          "detail": null,
+          "elapsed_seconds": null,
+          "eta_seconds": null,
+          "finished_at": null,
+          "fraction": null,
+          "label": "Identifying speakers",
+          "progress": null,
+          "stage": "diarize",
+          "started_at": null,
+          "status": "pending"
+        },
+        {
+          "detail": null,
+          "elapsed_seconds": null,
+          "eta_seconds": null,
+          "finished_at": null,
+          "fraction": null,
+          "label": "Aligning words",
+          "progress": null,
+          "stage": "align",
+          "started_at": null,
+          "status": "pending"
+        },
+        {
+          "detail": null,
+          "elapsed_seconds": null,
+          "eta_seconds": null,
+          "finished_at": null,
+          "fraction": null,
+          "label": "Checking quality",
+          "progress": null,
+          "stage": "quality",
+          "started_at": null,
+          "status": "pending"
+        },
+        {
+          "detail": null,
+          "elapsed_seconds": null,
+          "eta_seconds": null,
+          "finished_at": null,
+          "fraction": null,
+          "label": "Re-checking doubtful passages",
+          "progress": null,
+          "stage": "retranscribe",
+          "started_at": null,
+          "status": "pending"
+        },
+        {
+          "detail": null,
+          "elapsed_seconds": null,
+          "eta_seconds": null,
+          "finished_at": null,
+          "fraction": null,
+          "label": "Validating transcript",
+          "progress": null,
+          "stage": "validate",
+          "started_at": null,
+          "status": "pending"
+        },
+        {
+          "detail": null,
+          "elapsed_seconds": null,
+          "eta_seconds": null,
+          "finished_at": null,
+          "fraction": null,
+          "label": "Saving transcript",
+          "progress": null,
+          "stage": "finalize",
+          "started_at": null,
+          "status": "pending"
+        }
+      ],
+      "started_at": null,
+      "status": "queued",
+      "updated_at": "2026-10-17T04:30:03.700Z"
+    },
+    "project": {
+      "created_at": "2026-10-17T04:30:03.699Z",
+      "duration": null,
+      "has_video": false,
+      "id": "aaef71378b094602ad6386da353e7fa0",
+      "language": null,
+      "last_job_id": "a21e21e6fefe4ae192a3681c6291cf18",
+      "media": null,
+      "segment_count": 0,
+      "source": {
+        "kind": "url",
+        "mtime_ns": null,
+        "path": null,
+        "size_bytes": null,
+        "url": "http://127.0.0.1:8000/index.html"
+      },
+      "source_meta": {
+        "ads_note": "Transcribed from the media file retrieved from YouTube. Ads that YouTube inserts while a video plays are not part of that file and are not transcribed. Sponsor messages or ads that are part of the video itself are transcribed like any other speech.",
+        "authorization": {
+          "confirmed_at": "2026-10-17T04:30:03.699Z",
+          "statement": "I am authorized to download and transcribe this video: it is my own, it is licensed for reuse, or I have the rights holder's permission."
+        },
+        "channel": null,
+        "channel_url": null,
+        "chapters": [],
+        "duration": null,
+        "kind": "youtube",
+        "language": null,
+        "license": null,
+        "requested": {
+          "caption_tracks": [
+            {
+              "formats": [
+                "vtt"
+              ],
+              "kind": "manual",
+              "language": "en",
+              "name": "en"
+            }
+          ],
+          "media": "audio"
+        },
+        "sponsor_chapters": [],
+        "title": "JFK talk (1)",
+        "upload_date": "20261017",
+        "url": "http://127.0.0.1:8000/index.html",
+        "video_id": "index-1"
+      },
+      "status": "queued",
+      "title": "JFK talk (1)",
+      "updated_at": "2026-10-17T04:30:03.700Z"
+    }
+  }
+}

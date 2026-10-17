@@ -273,6 +273,8 @@ class Worker:
             except youtube_fetch.Cancelled:
                 self._check_cancel()
                 raise Cancelled("The job was cancelled.") from None
+            # progress is throttled: record the finished size, not the last sample
+            self._progress("download", retrieved.bytes, retrieved.bytes, force=True)
             warnings = []
             tracks = []
             if request.get("captions"):

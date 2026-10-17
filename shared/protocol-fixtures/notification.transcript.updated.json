@@ -1,7 +1,7 @@
 {
   "method": "transcript.updated",
   "params": {
-    "project_id": "877b9d9934364b73b86e5e74f3723d54",
+    "project_id": "6ffd1e7be9c44bb49ef99687dc308727",
     "revision": 2,
     "summary": "Rename \u201cSpeaker 1\u201d to \u201cDiane\u201d"
   }

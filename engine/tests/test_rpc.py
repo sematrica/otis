@@ -98,7 +98,7 @@ def engine(data_dir):
 
 def test_info_and_protocol_hygiene(engine):
     info = engine.result("engine.info")
-    assert info["protocol_version"] == 3
+    assert info["protocol_version"] == 4
     assert {b["name"] for b in info["backends"]} == {"faster-whisper", "mlx"}
     fw = next(b for b in info["backends"] if b["name"] == "faster-whisper")
     assert fw["available"] is True and fw["capabilities"]["beam_search"] is True
@@ -121,7 +121,7 @@ def test_errors_are_structured(engine):
     # malformed input does not kill the server
     engine.proc.stdin.write("{not json\n")
     engine.proc.stdin.flush()
-    assert engine.result("engine.info")["protocol_version"] == 3
+    assert engine.result("engine.info")["protocol_version"] == 4
 
 
 def test_project_crud_and_export_guard(engine, jfk_path, tmp_path):

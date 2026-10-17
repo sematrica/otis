@@ -138,8 +138,16 @@ def test_format_choice():
     assert audio.audio["format_id"] == "140" and audio.video is None
     no_separate_video = {"formats": [f for f in info["formats"] if f["format_id"] in ("140", "18")]}
     assert fetch.choose_formats(no_separate_video, video=True).combined["format_id"] == "18"
-    with pytest.raises(fetch.YouTubeError):
+    with pytest.raises(fetch.YouTubeError) as drm:
         fetch.choose_formats({"formats": [_fmt("140", "m4a", "none", "mp4a.40.2", drm=True)]}, video=False)
+    assert drm.value.code == "youtube_drm"
+    with pytest.raises(fetch.YouTubeError) as nothing:
+        fetch.choose_formats({"formats": [_fmt("137", "mp4", "avc1", "none", height=1080)]}, video=False)
+    assert nothing.value.code == "youtube_unsupported"  # no audio, and no DRM either
+    # a page's <audio> element: no codec information, no video
+    page_audio = {"formats": [{"format_id": "0", "ext": "wav", "vcodec": "none", "url": "http://127.0.0.1/a.wav"}]}
+    assert fetch.choose_formats(page_audio, video=False).audio["format_id"] == "0"
+    assert fetch.choose_formats(page_audio, video=True).audio["format_id"] == "0"  # no video to add
 
 
 def test_refusals_and_sponsor_chapters():

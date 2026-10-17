@@ -19,7 +19,11 @@ into a local Ollama), an AI review of that conversation is captured too.
 from __future__ import annotations
 
 import argparse
+import functools
+import http.server
 import json
+import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -29,6 +33,11 @@ from pathlib import Path
 from queue import Queue
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+class _QuietHandler(http.server.SimpleHTTPRequestHandler):
+    def log_message(self, *_args) -> None:
+        pass
 OUT = ROOT / "shared" / "protocol-fixtures"
 
 
@@ -44,6 +53,24 @@ def main() -> int:
     args = parser.parse_args()
 
     data_dir = Path(tempfile.mkdtemp(prefix="verbatim-fixtures-"))
+
+    # Stage 4: a local page with an HTML5 audio element and a caption track,
+    # retrieved through the YouTube import path (YouTube itself is not used for
+    # fixtures; the engine accepts this loopback host only because it is named
+    # in VERBATIM_TEST_MEDIA_HOST).
+    site = Path(tempfile.mkdtemp(prefix="verbatim-site-"))
+    shutil.copy(ROOT / "engine" / "tests" / "corpus" / "jfk.wav", site / "talk.wav")
+    (site / "talk.en.vtt").write_text("WEBVTT\n\n00:00:00.300 --> 00:00:03.000\nAnd so, my fellow Americans,\n\n"
+                                      "00:00:03.000 --> 00:00:08.000\nask not what your country can do for you\n")
+    (site / "index.html").write_text(
+        '<html><head><title>JFK talk</title></head><body><audio controls><source src="talk.wav" type="audio/wav">'
+        '<track kind="captions" src="talk.en.vtt" srclang="en" label="English"></audio></body></html>')
+    server = http.server.ThreadingHTTPServer(
+        ("127.0.0.1", 0), functools.partial(_QuietHandler, directory=str(site)))
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    page_host = f"127.0.0.1:{server.server_address[1]}"
+    os.environ["VERBATIM_TEST_MEDIA_HOST"] = page_host
+    page = f"http://{page_host}/index.html"
 
     def install_speaker_models() -> None:
         # Make the installed models visible to this fresh data folder. Done only
@@ -80,6 +107,8 @@ def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
 
     replacements = [
+        (page_host, "127.0.0.1:8000"),
+        (str(site), "/private/tmp/verbatim-site"),
         (args.model_path, "/Users/example/Models/faster-whisper-small"),
         *([(args.conversation, "/Users/example/Downloads/call.wav")] if args.conversation else []),
         (str(data_dir.resolve()), "/Users/example/Library/Application Support/Verbatim"),
@@ -125,6 +154,50 @@ def main() -> int:
         save("notification.project.updated", project_note)
     save("transcript.get", call("transcript.get", {"project_id": project["result"]["id"], "include_words": True}))
     save("export.render", call("export.render", {"project_id": project["result"]["id"], "format": "txt"}))
+    # Stage 4: exports, search, queue
+    save("export.formats", call("export.formats"))
+    for fmt in ("srt", "vtt", "json", "csv", "md"):
+        save(f"export.render.{fmt}", call("export.render", {"project_id": project["result"]["id"], "format": fmt}))
+    save("search.transcripts", call("search.transcripts", {"query": "fellow americ"}))
+    save("error.search_empty", call("search.transcripts", {"query": " ;; "}))
+    # a paused queue holding two jobs, reordered, then resumed
+    save("queue.pause", call("queue.pause", {"interrupt": False}))
+    waiting = []
+    for title in ("Queued first", "Queued second"):
+        queued_project = call("projects.create", {"path": str(jfk), "title": title})["result"]
+        waiting.append(call("jobs.start", {"project_id": queued_project["id"],
+                                           "options": {**options, "mode": "fast"}})["result"]["id"])
+    save("queue.get", call("queue.get"))
+    save("queue.reorder", call("queue.reorder", {"job_ids": waiting[::-1]}))
+    queue_note = next((n for n in reversed(notifications) if n["method"] == "queue.updated"), None)
+    if queue_note:
+        save("notification.queue.updated", queue_note)
+    save("queue.resume", call("queue.resume"))
+    for queued_job in waiting:
+        while call("jobs.get", {"job_id": queued_job})["result"]["status"] in ("queued", "running"):
+            time.sleep(0.3)
+
+    # Stage 4: import from a (local) video page with captions
+    save("error.youtube_bad_url", call("youtube.inspect", {"url": "https://vimeo.com/123456"}))
+    save("youtube.inspect", call("youtube.inspect", {"url": page}))
+    save("error.youtube_not_authorized", call("projects.createFromYouTube", {"url": page, "options": options}))
+    created = call("projects.createFromYouTube", {"url": page, "authorized": True, "options": options,
+                                                  "media": "audio",
+                                                  "captions": [{"language": "en", "kind": "manual"}]})
+    save("projects.createFromYouTube", created)
+    imported = created["result"]["project"]["id"]
+    while True:
+        snapshot = call("jobs.get", {"job_id": created["result"]["job"]["id"]})
+        if snapshot["result"]["status"] in ("completed", "failed", "cancelled", "interrupted"):
+            break
+        time.sleep(0.3)
+    save("jobs.get.completed.youtube", snapshot)
+    save("projects.get.youtube", call("projects.get", {"project_id": imported}))
+    tracks = call("captions.list", {"project_id": imported})
+    save("captions.list", tracks)
+    save("captions.export", call("captions.export", {"project_id": imported,
+                                                     "caption_id": tracks["result"]["captions"][0]["id"],
+                                                     "format": "vtt"}))
     if args.conversation and args.diarization_dir and args.alignment_dir:
         install_speaker_models()
         call_project = call("projects.create", {"path": args.conversation, "title": "Call"})["result"]
@@ -210,6 +283,7 @@ def main() -> int:
     save("projects.list", call("projects.list"))
     call("engine.shutdown")
     proc.wait(timeout=30)
+    server.shutdown()
     print(f"wrote fixtures to {OUT}")
     return 0 if snapshot["result"]["status"] == "completed" else 1
 

@@ -1,0 +1,17 @@
+{
+  "id": 90,
+  "result": {
+    "captions": [
+      {
+        "cue_count": 2,
+        "fetched_at": "2026-10-17T04:30:04.182Z",
+        "id": 1,
+        "kind": "manual",
+        "language": "en",
+        "name": "en",
+        "project_id": "aaef71378b094602ad6386da353e7fa0",
+        "source": "youtube"
+      }
+    ]
+  }
+}

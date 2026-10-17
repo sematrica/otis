@@ -38,18 +38,18 @@
       "logical_cpus": 4,
       "machine": "x86_64",
       "macos_version": null,
-      "memory_bytes": 16766414848,
+      "memory_bytes": 16874930176,
       "performance_cores": 4,
       "platform": "linux",
       "python": "3.12.3"
     },
-    "pid": 4763,
-    "protocol_version": 3,
+    "pid": 6106,
+    "protocol_version": 4,
     "python": {
       "executable": "/Users/example/verbatim/engine/.venv/bin/python3",
       "version": "3.12.3"
     },
-    "schema_version": 3,
-    "version": "0.3.0"
+    "schema_version": 6,
+    "version": "0.4.0"
   }
 }

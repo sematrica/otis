@@ -15,6 +15,7 @@ final class FixtureDecodingTests: XCTestCase {
     private struct Response<T: Decodable>: Decodable { let result: T }
     private struct Note<T: Decodable>: Decodable { let method: String; let params: T }
     private struct Failure: Decodable { let error: ErrorPayload }
+    private struct FormatList: Decodable { let formats: [String] }
 
     private func data(_ name: String) throws -> Data {
         try Data(contentsOf: Self.fixtures.appendingPathComponent("\(name).json"))
@@ -262,5 +263,122 @@ final class FixtureDecodingTests: XCTestCase {
         let refused = try EngineClient.makeDecoder().decode(Failure.self, from: data("error.llm_remote_not_allowed")).error
         XCTAssertEqual(refused.code, "invalid_params")
         XCTAssertEqual(refused.data?.lookup("remote"), .bool(true))
+    }
+
+    // MARK: - Stage 4
+
+    func testAllExportFormats() throws {
+        XCTAssertEqual(try result("export.formats", as: FormatList.self).formats, ExportFormat.allCases.map(\.rawValue))
+        func rendered(_ format: ExportFormat) throws -> ExportRendered {
+            let export = try result("export.render.\(format.rawValue)", as: ExportRendered.self)
+            XCTAssertEqual(export.suggestedFilename, "JFK.\(format.fileExtension)")
+            return export
+        }
+        XCTAssertTrue(try rendered(.srt).content.hasPrefix("1\n00:00:00,000 --> "))
+        XCTAssertTrue(try rendered(.vtt).content.hasPrefix("WEBVTT\n"))
+        // a byte-order mark, so spreadsheet apps read the text as UTF-8
+        XCTAssertEqual(try rendered(.csv).content.unicodeScalars.first, "\u{FEFF}")
+        XCTAssertTrue(try rendered(.md).content.hasPrefix("# JFK\n"))
+
+        // the JSON export: metadata, speakers, segments with words and flags, and the original transcript
+        let json = try JSONDecoder().decode(JSONValue.self, from: Data(try rendered(.json).content.utf8))
+        XCTAssertEqual(json["format"]?.stringValue, "verbatim-transcript")
+        XCTAssertEqual(json["project"]?["title"]?.stringValue, "JFK")
+        guard case .array(let segments)? = json["segments"], let first = segments.first,
+              case .array(let words)? = first["words"], case .array(let original)? = json["original"]?["segments"]
+        else { return XCTFail("segments, words and the original transcript are expected") }
+        XCTAssertFalse(words.isEmpty)
+        XCTAssertEqual(original.count, segments.count)
+        for key in ["speaker_id", "speaker", "start", "end", "text", "original_text", "flags", "review_priority"] {
+            XCTAssertNotNil(first[key], key)
+        }
+        XCTAssertNotNil(json["speakers"])
+    }
+
+    func testSearch() throws {
+        let found = try result("search.transcripts", as: SearchResponse.self)
+        XCTAssertEqual(found.method, "index")
+        XCTAssertEqual(found.terms, ["fellow", "americ"])
+        let hit = try XCTUnwrap(found.results.first)
+        XCTAssertEqual(hit.projectTitle, "JFK")
+        XCTAssertFalse(hit.inOriginalOnly)
+        // prefix matching: "americ" finds "Americans"
+        XCTAssertEqual(hit.runs.filter { $0.1 }.map { $0.0 }, ["fellow", "Americans"])
+        XCTAssertEqual(hit.runs.map { $0.0 }.joined(), hit.text)
+        let empty = try EngineClient.makeDecoder().decode(Failure.self, from: data("error.search_empty")).error
+        XCTAssertEqual(empty.code, "invalid_params")
+    }
+
+    func testPersistentQueue() throws {
+        let paused = try result("queue.pause", as: QueueState.self)
+        XCTAssertTrue(paused.paused)
+        XCTAssertTrue(paused.autoResume)
+        let waiting = try result("queue.get", as: QueueState.self)
+        XCTAssertTrue(waiting.paused)
+        XCTAssertNil(waiting.running)
+        XCTAssertEqual(waiting.queued.map(\.queuePosition), [1, 2])
+        XCTAssertTrue(waiting.queued.allSatisfy { $0.status == .queued })
+        let reordered = try result("queue.reorder", as: QueueState.self)
+        XCTAssertEqual(reordered.queued.map(\.id), waiting.queued.map(\.id).reversed())
+        XCTAssertEqual(reordered.queued.map(\.queuePosition), [1, 2])
+        let note = try EngineClient.makeDecoder().decode(Note<QueueUpdate>.self, from: data("notification.queue.updated"))
+        XCTAssertEqual(note.method, "queue.updated")
+        XCTAssertEqual(note.params.queued, reordered.queued.map(\.id))
+        let resumed = try result("queue.resume", as: QueueState.self)
+        XCTAssertFalse(resumed.paused)
+    }
+
+    /// Captured from a local web page with an audio file and creator captions
+    /// (the same retrieval path as YouTube; YouTube itself is not reachable from CI).
+    func testVideoImportWithCaptions() throws {
+        let video = try result("youtube.inspect", as: YouTubeInspection.self)
+        XCTAssertNil(video.refusal)
+        XCTAssertTrue(video.adsNote.contains("not part of that file"))
+        XCTAssertEqual(video.captions.map(\.id), ["manual:en"])
+        XCTAssertFalse(video.captions[0].isAutomatic)
+
+        let decoder = EngineClient.makeDecoder()
+        let notVideo = try decoder.decode(Failure.self, from: data("error.youtube_bad_url")).error
+        XCTAssertEqual(notVideo.code, "invalid_params")
+        XCTAssertEqual(notVideo.data?.lookup("reason")?.stringValue, "url")
+        let unconfirmed = try decoder.decode(Failure.self, from: data("error.youtube_not_authorized")).error
+        XCTAssertEqual(unconfirmed.data?.lookup("reason")?.stringValue, "authorization")
+
+        // the project exists before its media does
+        let created = try result("projects.createFromYouTube", as: CreatedFromYouTube.self)
+        XCTAssertNil(created.project.media)
+        XCTAssertNil(created.project.sourceURL)
+        XCTAssertTrue(created.project.isFromYouTube)
+        XCTAssertEqual(created.job.kind, "youtube")
+        XCTAssertEqual(created.job.stages.first?.stage, "download")
+        XCTAssertEqual(created.job.stages.count, 12)
+
+        let done = try result("jobs.get.completed.youtube", as: Job.self)
+        XCTAssertEqual(done.status, .completed)
+        let download = try XCTUnwrap(done.stages.first)
+        XCTAssertEqual(download.status, .completed)
+        XCTAssertEqual(download.progress?.unit, "bytes")
+        XCTAssertEqual(download.progress?.done, download.progress?.total)
+        let compared = done.effective?.lookup("source")?.lookup("captions_compared")
+        guard case .array(let tracks)? = compared else { return XCTFail("captions were compared") }
+        XCTAssertEqual(tracks.first?.lookup("language")?.stringValue, "en")
+
+        let project = try result("projects.get.youtube", as: Project.self)
+        XCTAssertEqual(project.source.kind, "url")
+        XCTAssertNotNil(project.media)
+        XCTAssertEqual(project.sourceURL?.path, project.media?.path)
+        let meta = try XCTUnwrap(project.sourceMeta)
+        XCTAssertTrue(meta.lookup("authorization")?.lookup("statement")?.stringValue?.hasPrefix("I am authorized") ?? false)
+        XCTAssertNotNil(meta.lookup("authorization")?.lookup("confirmed_at")?.stringValue)
+        XCTAssertEqual(meta.lookup("requested")?.lookup("media")?.stringValue, "audio")
+        XCTAssertEqual(meta.lookup("retrieved")?.lookup("has_video"), .bool(false))
+
+        let captions = try result("captions.list", as: CaptionsResult.self).captions
+        XCTAssertEqual(captions.map(\.kind), ["manual"])
+        XCTAssertEqual(captions.first?.projectId, project.id)
+        XCTAssertEqual(captions.first?.cueCount, 2)
+        let exported = try result("captions.export", as: ExportRendered.self)
+        XCTAssertTrue(exported.content.hasPrefix("WEBVTT"))
+        XCTAssertTrue(exported.suggestedFilename.hasSuffix(".en.captions.vtt"))
     }
 }

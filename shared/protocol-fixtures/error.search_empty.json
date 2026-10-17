@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": "invalid_params",
+    "message": "Type a word or a \"phrase\" to search for."
+  },
+  "id": 34
+}

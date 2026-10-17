@@ -88,6 +88,9 @@ echo "==> Recording build provenance"
 echo "==> Verifying the embedded engine"
 "$PY_BIN" -I -m verbatim_engine --version
 "$PY_BIN" -I -c "import verbatim_engine, faster_whisper, ctranslate2, av, onnxruntime; print('engine imports ok')"
+# YouTube import: yt-dlp, its pinned JavaScript components and the deno runtime run from the bundle
+"$PY_BIN" -I -c "import subprocess, deno, yt_dlp, yt_dlp_ejs; print('yt-dlp', yt_dlp.version.__version__, '|',
+subprocess.run([deno.find_deno_bin(), '--version'], capture_output=True, text=True, check=True).stdout.splitlines()[0])"
 
 echo "==> Signing ($([[ "$SIGN_IDENTITY" == "-" ]] && echo ad-hoc || echo "$SIGN_IDENTITY"))"
 # Sign nested code first (inside-out), then the app.

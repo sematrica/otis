@@ -1,0 +1,7 @@
+{
+  "id": 31,
+  "result": {
+    "content": "\ufeffsegment_id,start,end,start_clock,speaker,text,original_text,text_edited,review_priority,open_flags\r\n1,0.0,7.45,00:00:00,,\"And so my fellow Americans, ask not what your country can do for you.\",\"And so my fellow Americans, ask not what your country can do for you.\",0,,\r\n2,7.79,10.33,00:00:07,,Ask what you can do for your country.,Ask what you can do for your country.,0,,\r\n",
+    "suggested_filename": "JFK.csv"
+  }
+}

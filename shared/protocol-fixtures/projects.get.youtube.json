@@ -1,0 +1,96 @@
+{
+  "id": 89,
+  "result": {
+    "created_at": "2026-10-17T04:30:03.699Z",
+    "duration": 11.0,
+    "has_video": false,
+    "id": "aaef71378b094602ad6386da353e7fa0",
+    "language": "en",
+    "last_job_id": "a21e21e6fefe4ae192a3681c6291cf18",
+    "media": {
+      "audio_streams": [
+        {
+          "channels": 1,
+          "codec": "pcm_s16le",
+          "duration": 11.0,
+          "index": 0,
+          "is_default": false,
+          "language": null,
+          "sample_rate": 16000
+        }
+      ],
+      "bit_rate": 256056,
+      "duration": 11.0,
+      "format_long_name": "WAV / WAVE (Waveform Audio)",
+      "format_name": "wav",
+      "has_audio": true,
+      "has_video": false,
+      "mtime_ns": 1792211404129842557,
+      "path": "/Users/example/Library/Application Support/Verbatim/media/aaef71378b094602ad6386da353e7fa0/audio.wav",
+      "selected_audio_stream": 0,
+      "size_bytes": 352078,
+      "start_time": 0.0,
+      "video_streams": []
+    },
+    "segment_count": 2,
+    "source": {
+      "kind": "url",
+      "mtime_ns": 1792211404129842557,
+      "path": "/Users/example/Library/Application Support/Verbatim/media/aaef71378b094602ad6386da353e7fa0/audio.wav",
+      "size_bytes": 352078,
+      "url": "http://127.0.0.1:8000/index.html"
+    },
+    "source_meta": {
+      "ads_note": "Transcribed from the media file retrieved from YouTube. Ads that YouTube inserts while a video plays are not part of that file and are not transcribed. Sponsor messages or ads that are part of the video itself are transcribed like any other speech.",
+      "authorization": {
+        "confirmed_at": "2026-10-17T04:30:03.699Z",
+        "statement": "I am authorized to download and transcribe this video: it is my own, it is licensed for reuse, or I have the rights holder's permission."
+      },
+      "channel": null,
+      "channel_url": null,
+      "chapters": [],
+      "duration": null,
+      "kind": "youtube",
+      "language": null,
+      "license": null,
+      "requested": {
+        "caption_tracks": [
+          {
+            "formats": [
+              "vtt"
+            ],
+            "kind": "manual",
+            "language": "en",
+            "name": "en"
+          }
+        ],
+        "media": "audio"
+      },
+      "retrieved": {
+        "bytes": 352078,
+        "captions": [
+          {
+            "kind": "manual",
+            "language": "en",
+            "name": "en"
+          }
+        ],
+        "duration": 11.0,
+        "file": "audio.wav",
+        "formats": [
+          "0"
+        ],
+        "has_video": false,
+        "warnings": []
+      },
+      "sponsor_chapters": [],
+      "title": "JFK talk (1)",
+      "upload_date": "20261017",
+      "url": "http://127.0.0.1:8000/index.html",
+      "video_id": "index-1"
+    },
+    "status": "ready",
+    "title": "JFK talk (1)",
+    "updated_at": "2026-10-17T04:30:08.157Z"
+  }
+}

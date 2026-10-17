@@ -164,32 +164,35 @@ class Choice:
 
 
 def _codec(f: dict[str, Any], key: str) -> str:
-    return (f.get(key) or "none").lower()
+    """"none" (the stream is absent), the codec, or "unknown"."""
+    return (f.get(key) or "unknown").lower()
 
 
 def choose_formats(info: dict[str, Any], *, video: bool) -> Choice:
-    formats = [f for f in info.get("formats") or [] if not f.get("has_drm") and f.get("url")]
+    every = [f for f in info.get("formats") or [] if f.get("url")]
+    formats = [f for f in every if not f.get("has_drm")]
     audio_only = [f for f in formats if _codec(f, "vcodec") == "none" and _codec(f, "acodec") != "none"]
     aac = [f for f in audio_only if _codec(f, "acodec").startswith("mp4a") or f.get("ext") == "m4a"]
     best_audio = max(aac or audio_only, key=lambda f: (f.get("abr") or f.get("tbr") or 0), default=None)
-    video_only = [f for f in formats if _codec(f, "acodec") == "none" and _codec(f, "vcodec") != "none"
+    video_only = [f for f in formats if _codec(f, "acodec") == "none" and _codec(f, "vcodec") not in ("none", "unknown")
                   and (f.get("height") or 0) <= MAX_VIDEO_HEIGHT]
     h264 = [f for f in video_only if _codec(f, "vcodec").startswith("avc1") and f.get("ext") == "mp4"]
     best_video = max(h264, key=lambda f: (f.get("height") or 0, f.get("tbr") or 0), default=None)
     combined = [f for f in formats if _codec(f, "vcodec") != "none" and _codec(f, "acodec") != "none"
                 and (f.get("height") or 0) <= MAX_VIDEO_HEIGHT]
-    playable = [f for f in combined if f.get("ext") == "mp4"] or combined
-    # the generic extractor (tests) reports no codecs: one file with both
-    unknown = [f for f in formats if not f.get("vcodec") and not f.get("acodec")]
-    best_combined = max(playable or unknown, key=lambda f: (f.get("height") or 0, f.get("tbr") or 0), default=None)
+    known = [f for f in combined if "unknown" not in (_codec(f, "vcodec"), _codec(f, "acodec"))]
+    # pages without codec information (the generic extractor) give one file with both
+    playable = [f for f in known if f.get("ext") == "mp4"] or known or combined
+    best_combined = max(playable, key=lambda f: (f.get("height") or 0, f.get("tbr") or 0), default=None)
     if best_audio is not None and (not video or best_video is not None):
         return Choice(best_audio, best_video if video else None, None)
     if best_combined is not None:
         return Choice(None, None, best_combined)
     if best_audio is not None:
         return Choice(best_audio, None, None)
-    raise YouTubeError("YouTube offers no audio for this video that can be retrieved without DRM.",
-                       code="youtube_drm")
+    if any(f.get("has_drm") for f in every):
+        raise YouTubeError("This video is protected by DRM and cannot be imported.", code="youtube_drm")
+    raise YouTubeError("YouTube offers no audio for this video that Verbatim can retrieve.", code="youtube_unsupported")
 
 
 def _caption_tracks(info: dict[str, Any]) -> list[dict[str, Any]]:

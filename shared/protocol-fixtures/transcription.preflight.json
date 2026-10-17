@@ -34,7 +34,7 @@
       },
       "mode": "balanced",
       "model": {
-        "display_name": "Custom model (small)",
+        "display_name": "Custom model (small-int8)",
         "id": null,
         "path": "/Users/example/Models/faster-whisper-small",
         "revision": null

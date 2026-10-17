@@ -1,0 +1,10 @@
+{
+  "error": {
+    "code": "invalid_params",
+    "data": {
+      "reason": "authorization"
+    },
+    "message": "Confirm that you are authorized to download and transcribe this video."
+  },
+  "id": 71
+}

@@ -65,6 +65,19 @@ jobs:
           VERBATIM_TEST_REPORT: ${{ runner.temp }}/accuracy-linux.json
           VERBATIM_TEST_OLLAMA_MODEL: qwen2.5:0.5b
         run: uv run --project engine pytest engine/tests -m model -q -s -rs
+      # YouTube itself, outside our control: often asks data-centre machines to
+      # sign in (the test then skips, and says so). Media is retrieved only for
+      # a video YouTube lists as Creative Commons, unless the repository sets
+      # VERBATIM_TEST_YOUTUBE_URL to a video its owners may retrieve and
+      # VERBATIM_TEST_YOUTUBE_AUTHORIZED to 1.
+      - name: Import from YouTube itself (non-blocking)
+        continue-on-error: true
+        env:
+          VERBATIM_TEST_MODEL_DIR: ${{ runner.temp }}/vdata/models/faster-whisper/small
+          # default: Big Buck Bunny, Blender Foundation (CC BY)
+          VERBATIM_TEST_YOUTUBE_URL: ${{ vars.VERBATIM_TEST_YOUTUBE_URL || 'https://www.youtube.com/watch?v=aqz-KE-bpKQ' }}
+          VERBATIM_TEST_YOUTUBE_AUTHORIZED: ${{ vars.VERBATIM_TEST_YOUTUBE_AUTHORIZED }}
+        run: uv run --project engine pytest engine/tests/test_stage4_models.py -k real_youtube -q -s -rs
       - name: Capture protocol fixtures (real engine messages, including an AI review with the local model)
         run: >-
           uv run --project engine python engine/scripts/capture_protocol_fixtures.py

@@ -56,6 +56,8 @@ def test_import_from_a_video_page_with_captions(service, fw_model_dir, media_sit
     stages = {s["stage"]: s for s in job["stages"]}
     assert stages["download"]["status"] == "completed" and "caption track" in stages["download"]["detail"]
     project = repo.get_project(service.db, project["id"])
+    size = project["source"]["size_bytes"]
+    assert stages["download"]["progress"] == {"done": size, "total": size, "unit": "bytes"}
     media_dir = service.paths.media_dir(project["id"])
     assert project["source"]["path"].startswith(str(media_dir)) and project["has_video"]
     assert project["source_meta"]["retrieved"]["captions"][0]["kind"] == "manual"
@@ -79,20 +81,43 @@ def test_import_from_a_video_page_with_captions(service, fw_model_dir, media_sit
     assert not media_dir.exists()
 
 
-def test_real_youtube_video():
-    """Needs YouTube to answer this machine (CI tries; data-centre addresses
-    are often asked to sign in, which Verbatim never does)."""
+def test_real_youtube_video(service, fw_model_dir):
+    """Import from YouTube itself. Opt-in with ``VERBATIM_TEST_YOUTUBE_URL``:
+    it needs YouTube to answer this machine, and data-centre addresses are
+    often asked to sign in, which Verbatim never does. The video's metadata is
+    always checked; its media is retrieved only when YouTube lists it under a
+    Creative Commons licence, or when ``VERBATIM_TEST_YOUTUBE_AUTHORIZED=1``
+    says the person running the test may retrieve it (their own video, or
+    with the rights holder's permission)."""
     url = os.environ.get("VERBATIM_TEST_YOUTUBE_URL")
     if not url:
         pytest.skip("VERBATIM_TEST_YOUTUBE_URL not set")
-    from verbatim_engine.youtube import fetch, urls
-
+    call = service.methods()
+    unreachable = ("youtube_blocked", "youtube_network")
     try:
-        inspected = fetch.inspect(urls.validate(url))
+        inspected = call["youtube.inspect"]({"url": url})
     except EngineError as exc:
-        if exc.code in ("youtube_blocked", "youtube_network"):
+        if exc.code in unreachable:
             pytest.skip(f"YouTube did not serve this machine: {exc.code}: {exc.message}")
         raise
     print({k: inspected[k] for k in ("title", "channel", "duration", "license", "captions", "approx_bytes",
                                      "refusal")})
     assert inspected["refusal"] is None and inspected["duration"]
+    licensed = "creative commons" in (inspected["license"] or "").lower()
+    if not licensed and os.environ.get("VERBATIM_TEST_YOUTUBE_AUTHORIZED") != "1":
+        pytest.skip(f"metadata checked; media not retrieved (licence: {inspected['license']!r})")
+
+    options = {"backend": "faster-whisper", "model_path": str(fw_model_dir), "mode": "fast"}
+    captions = [{"language": t["language"], "kind": t["kind"]} for t in inspected["captions"]][:1]
+    created = call["projects.createFromYouTube"]({"url": url, "authorized": True, "options": options,
+                                                  "media": "audio", "captions": captions})
+    job = _wait(service, created["job"]["id"], timeout=1800)
+    if job["status"] == "failed" and (job["error"] or {}).get("code") in unreachable:
+        pytest.skip(f"YouTube described the video but did not serve its media: {job['error']}")
+    assert job["status"] == "completed", job["error"]
+    project = repo.get_project(service.db, created["project"]["id"])
+    retrieved = project["source_meta"]["retrieved"]
+    print({"retrieved": retrieved, "segments": project["segment_count"], "download": job["stages"][0],
+           "source": job["effective"].get("source")})
+    assert retrieved["has_video"] is False and abs(retrieved["duration"] - inspected["duration"]) <= 2.0
+    assert len(call["captions.list"]({"project_id": project["id"]})["captions"]) == len(captions)
