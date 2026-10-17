@@ -34,6 +34,9 @@ export formats, persistent processing queues.
 | Packaged-app self-tests on macOS | faster-whisper, MLX, and Maximum Accuracy with speakers and alignment on the two-person call: 80 / 80 words aligned, speaker renamed and undone, two passages re-checked on demand through the app's client ("Re-check 2 passages: First-pass wording kept everywhere.") |
 | Accuracy benchmark | runs in CI on every push (Whisper Small); also run locally with Tiny and Small (int8) |
 
+Final Stage 3 CI run, all green on Linux and Apple Silicon macOS:
+https://github.com/sematrica/otis/actions/runs/39000420566
+
 New Stage 3 tests include: the CTC forward algorithm against brute-force path
 enumeration; every decision rule of the comparison (margin, deletion cost,
 empty decodes, unspellable words); the quality detectors; review priority;
@@ -211,6 +214,5 @@ Ollama, pull a model and choose it in **Settings › AI Verification**.
 YouTube import of authorized media with yt-dlp (validated URLs, no DRM or
 authentication bypass), captions where available (shown as a separate,
 labelled source, never mixed silently into the transcript), full-text search,
-SRT / VTT / JSON / DOCX / PDF / Markdown export, and persistent processing
-queues. Carried over: measure Large-v3 and speed on a real Mac; number
+SRT / VTT / JSON / CSV / Markdown export, and persistent processing queues. Carried over: measure Large-v3 and speed on a real Mac; number
 passages per batch for small AI models.
