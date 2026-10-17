@@ -414,9 +414,11 @@ model loading always uses local files only. The storage folder is configurable
    quickly (updating yt-dlp is a Stage 5 maintenance concern). YouTube often
    asks data-centre and some home addresses to sign in ("not a bot"); Verbatim
    never signs in, so such requests fail with `youtube_blocked` and the user
-   imports a file instead. Retrieval from YouTube itself could not be tested
-   from the development container (no route to YouTube); CI attempts it
-   without blocking the build. Use is limited to content the user is
+   imports a file instead. Retrieval from YouTube itself is not verified:
+   the development container has no route to YouTube, and YouTube refused
+   CI's GitHub-hosted runner with its bot check (the refusal path is
+   verified; media retrieval and deno's challenge solving are not). CI keeps
+   trying without blocking the build. Use is limited to content the user is
    authorized to download; the confirmation is the user's, Verbatim cannot
    verify it. The bundled deno adds about 90–100 MB, and its JIT will need the
    matching hardened-runtime entitlement for notarization (Stage 5).
