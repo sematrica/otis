@@ -4,13 +4,14 @@ import UniformTypeIdentifiers
 import VerbatimCore
 
 enum SidebarSection: String, CaseIterable, Identifiable, Hashable {
-    case library, recent, processing, completed, settings
+    case library, search, recent, processing, completed, settings
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .library: return "Library"
+        case .search: return "Search"
         case .recent: return "Recent Projects"
         case .processing: return "Processing"
         case .completed: return "Completed"
@@ -21,6 +22,7 @@ enum SidebarSection: String, CaseIterable, Identifiable, Hashable {
     var systemImage: String {
         switch self {
         case .library: return "books.vertical"
+        case .search: return "magnifyingglass"
         case .recent: return "clock"
         case .processing: return "waveform"
         case .completed: return "checkmark.circle"
@@ -33,6 +35,14 @@ struct AppAlert: Identifiable {
     let id = UUID()
     let title: String
     let message: String
+}
+
+/// A passage to show when a project opens: selected, scrolled to, cued in
+/// the player, with the searched words highlighted.
+struct SearchFocus: Equatable {
+    let segmentID: Int
+    let time: Double
+    let query: String
 }
 
 /// Media staged in the import panel, validated by the engine before import.
@@ -63,6 +73,8 @@ final class AppModel: ObservableObject {
     @Published var section: SidebarSection? = .library
     /// Ask the current section to open a project's workspace.
     @Published var openProjectRequest: String?
+    /// Where to go when a project opens (from a search result), by project id.
+    var pendingFocus: [String: SearchFocus] = [:]
     /// Bumped whenever a project's transcript may have changed.
     @Published private(set) var transcriptRevision: [String: Int] = [:]
     /// Latest transcript revision announced by the engine (after corrections).

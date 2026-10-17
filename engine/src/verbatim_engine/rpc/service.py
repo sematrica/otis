@@ -12,6 +12,7 @@ from typing import Any, Callable
 from .. import PROTOCOL_VERSION, __version__
 from ..asr.registry import describe_backends
 from ..errors import InvalidParams, NotFound
+from ..search import search as search_transcripts
 from ..export import FORMATS, WORD_FORMATS, render, suggested_filename, write_atomic
 from ..jobs.manager import JobManager
 from ..llm.providers import make_provider
@@ -116,6 +117,9 @@ class EngineService:
                                                                      _int_list(p, "segment_ids")),
             "transcript.undo": lambda p: self._edit(p, self.editor.undo),
             "transcript.redo": lambda p: self._edit(p, self.editor.redo),
+            "search.transcripts": lambda p: search_transcripts(
+                self.db, _require(p, "query"), project_id=p.get("project_id"), speaker_id=p.get("speaker_id"),
+                include_original=bool(p.get("include_original")), limit=p.get("limit") or 100),
             "export.formats": lambda _p: {"formats": list(FORMATS)},
             "export.render": self.export_render,
             "export.write": self.export_write,

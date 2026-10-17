@@ -107,6 +107,14 @@ public enum ExportFormat: String, CaseIterable, Sendable, Identifiable {
     public var fileExtension: String { rawValue }
 }
 
+public struct SearchParams: Encodable, Sendable {
+    public let query: String
+    public let projectId: String?
+    public let speakerId: Int?
+    public let includeOriginal: Bool
+    public let limit: Int
+}
+
 public struct ExportParams: Encodable, Sendable {
     public let projectId: String
     public let format: String
@@ -294,6 +302,15 @@ public extension EngineClient {
 
     private func edit<Params: Encodable & Sendable>(_ method: String, _ params: Params) async throws -> EditResult {
         try await call(method, params: params, as: EditResult.self, timeout: .seconds(120))
+    }
+
+    /// Full-text search over all transcripts, or one project's.
+    func searchTranscripts(_ query: String, projectId: String? = nil, speakerId: Int? = nil,
+                           includeOriginal: Bool = false, limit: Int = 200) async throws -> SearchResponse {
+        try await call("search.transcripts",
+                       params: SearchParams(query: query, projectId: projectId, speakerId: speakerId,
+                                            includeOriginal: includeOriginal, limit: limit),
+                       as: SearchResponse.self)
     }
 
     func renderExport(projectId: String, format: String = "txt", options: ExportOptions = .init()) async throws -> ExportRendered {

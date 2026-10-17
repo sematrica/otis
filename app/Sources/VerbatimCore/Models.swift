@@ -476,6 +476,55 @@ public struct TranscriptUpdated: Codable, Hashable, Sendable {
     public var summary: String?
 }
 
+// MARK: - Search
+
+/// A passage found by ``search.transcripts``. ``highlights`` are ranges of
+/// ``text`` in Unicode scalars (the engine's string offsets).
+public struct SearchHit: Codable, Hashable, Sendable, Identifiable {
+    public var projectId: String
+    public var projectTitle: String
+    public var segmentId: Int
+    public var start: Double
+    public var end: Double
+    public var speakerId: Int?
+    public var speaker: String?
+    public var text: String
+    public var highlights: [[Int]]
+    /// The match is only in the AI's wording, which the user corrected.
+    public var inOriginalOnly: Bool
+
+    public var id: Int { segmentId }
+
+    /// ``text`` split into (piece, highlighted) runs.
+    public var runs: [(String, Bool)] {
+        let scalars = Array(text.unicodeScalars)
+        var out: [(String, Bool)] = []
+        var position = 0
+        func piece(_ a: Int, _ b: Int) -> String {
+            var view = String.UnicodeScalarView()
+            view.append(contentsOf: scalars[max(0, a)..<min(scalars.count, b)])
+            return String(view)
+        }
+        for range in highlights where range.count == 2 && range[0] >= position && range[0] < range[1]
+            && range[0] < scalars.count {
+            if range[0] > position { out.append((piece(position, range[0]), false)) }
+            out.append((piece(range[0], range[1]), true))
+            position = min(range[1], scalars.count)
+        }
+        if position < scalars.count { out.append((piece(position, scalars.count), false)) }
+        return out
+    }
+}
+
+public struct SearchResponse: Codable, Sendable {
+    public var query: String
+    public var terms: [String]
+    /// "index" (FTS5 words) or "substring" (languages without spaces).
+    public var method: String
+    public var results: [SearchHit]
+    public var truncated: Bool
+}
+
 public struct ExportRendered: Codable, Hashable, Sendable {
     public var content: String
     public var suggestedFilename: String

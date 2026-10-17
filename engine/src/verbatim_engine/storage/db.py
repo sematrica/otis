@@ -263,7 +263,38 @@ CREATE INDEX suggestions_by_project ON suggestions(project_id, status);
 
 #: (version, script, rebuilds_tables). Table rebuilds run with foreign-key
 #: enforcement off, as SQLite requires, and are checked afterwards.
-MIGRATIONS: list[tuple[int, str, bool]] = [(1, SCHEMA_V1, False), (2, SCHEMA_V2, True), (3, SCHEMA_V3, False)]
+SCHEMA_V4 = """
+-- Stage 4: full-text search over transcripts. An external-content FTS5 index
+-- of the segments' current and AI text, kept in sync by triggers (every
+-- correction, undo, re-check and new transcription goes through them).
+-- unicode61 with diacritics removed: "cafe" finds "café".
+
+CREATE VIRTUAL TABLE segments_fts USING fts5(
+    text, original_text,
+    content='segments', content_rowid='id',
+    tokenize='unicode61 remove_diacritics 2'
+);
+
+CREATE TRIGGER segments_fts_insert AFTER INSERT ON segments BEGIN
+    INSERT INTO segments_fts(rowid, text, original_text) VALUES (new.id, new.text, new.original_text);
+END;
+
+CREATE TRIGGER segments_fts_delete AFTER DELETE ON segments BEGIN
+    INSERT INTO segments_fts(segments_fts, rowid, text, original_text)
+        VALUES ('delete', old.id, old.text, old.original_text);
+END;
+
+CREATE TRIGGER segments_fts_update AFTER UPDATE OF text, original_text ON segments BEGIN
+    INSERT INTO segments_fts(segments_fts, rowid, text, original_text)
+        VALUES ('delete', old.id, old.text, old.original_text);
+    INSERT INTO segments_fts(rowid, text, original_text) VALUES (new.id, new.text, new.original_text);
+END;
+
+INSERT INTO segments_fts(segments_fts) VALUES ('rebuild');
+"""
+
+MIGRATIONS: list[tuple[int, str, bool]] = [(1, SCHEMA_V1, False), (2, SCHEMA_V2, True), (3, SCHEMA_V3, False),
+                                           (4, SCHEMA_V4, False)]
 LATEST_VERSION = MIGRATIONS[-1][0]
 
 
@@ -359,9 +390,15 @@ class Database:
 
 
 def _split_sql(script: str) -> Iterable[str]:
-    """Split a schema script into statements (the schema contains no
-    semicolons inside literals or triggers)."""
+    """Split a schema script into complete statements (trigger bodies keep
+    their inner semicolons; the schema has no semicolons inside literals)."""
     lines = [line for line in script.splitlines() if not line.strip().startswith("--")]
-    for statement in "\n".join(lines).split(";"):
-        if statement.strip():
-            yield statement.strip()
+    buffer = ""
+    for piece in "\n".join(lines).split(";"):
+        buffer += piece + ";"
+        if sqlite3.complete_statement(buffer):
+            if buffer.strip(" \n\t;"):
+                yield buffer.strip()
+            buffer = ""
+    if buffer.strip(" \n\t;"):
+        raise ValueError(f"Incomplete SQL statement in schema: {buffer.strip()[:80]}")

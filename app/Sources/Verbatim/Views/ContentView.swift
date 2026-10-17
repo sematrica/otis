@@ -62,6 +62,8 @@ private struct SectionView: View {
                 switch section {
                 case .library:
                     LibraryView(onOpen: open)
+                case .search:
+                    SearchView(onOpen: open)
                 case .recent:
                     ProjectListView(title: "Recent Projects", projects: Array(model.projects.prefix(15)), onOpen: open)
                 case .processing:

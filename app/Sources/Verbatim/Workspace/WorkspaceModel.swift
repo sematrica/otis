@@ -19,6 +19,14 @@ final class WorkspaceModel: ObservableObject {
     @Published var selectedSegmentID: Int?
     @Published var focusedSpeakerID: Int?
     @Published var filter: Filter = .all
+    /// Find in this transcript (engine full-text search); empty = off.
+    @Published var searchText = ""
+    /// Passages matching ``searchText`` (nil while no search is active).
+    @Published private(set) var searchMatches: Set<Int>?
+    /// The searched words, for highlighting.
+    @Published private(set) var searchTerms: [String] = []
+    /// A passage to scroll into view (from a search result or Find).
+    @Published var scrollRequest: Int?
     /// Summary of the last change, shown briefly in the transcript header.
     @Published private(set) var lastChange: String?
     private(set) var index = TranscriptIndex(segments: [])
@@ -47,6 +55,38 @@ final class WorkspaceModel: ObservableObject {
         } catch {
             loadError = error.localizedDescription
         }
+        if searchMatches != nil { await runSearch() }  // the text may have changed
+    }
+
+    /// Searches this transcript for ``searchText``.
+    func runSearch() async {
+        let text = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else {
+            searchMatches = nil
+            searchTerms = []
+            return
+        }
+        do {
+            let response = try await client.searchTranscripts(text, projectId: projectID, limit: 500)
+            searchMatches = Set(response.results.map(\.segmentId))
+            searchTerms = response.terms
+        } catch {
+            searchMatches = []  // e.g. only punctuation typed: nothing matches
+            searchTerms = []
+        }
+    }
+
+    /// Shows a passage: selected and scrolled into view.
+    func focus(on segmentID: Int) {
+        guard segments.contains(where: { $0.id == segmentID }) else { return }
+        if let matches = searchMatches, !matches.contains(segmentID) {
+            searchText = ""
+            searchMatches = nil
+            searchTerms = []
+        }
+        if filter != .all && !visibleSegments.contains(where: { $0.id == segmentID }) { filter = .all }
+        selectedSegmentID = segmentID
+        scrollRequest = segmentID
     }
 
     private func apply(_ transcript: Transcript) {
@@ -81,18 +121,20 @@ final class WorkspaceModel: ObservableObject {
     }
 
     var visibleSegments: [Segment] {
+        let shown: [Segment]
         switch filter {
         case .all:
-            return segments
+            shown = segments
         case .speaker:
-            guard let focusedSpeakerID else { return segments }
-            return segments.filter { $0.speakerId == focusedSpeakerID }
+            shown = focusedSpeakerID.map { id in segments.filter { $0.speakerId == id } } ?? segments
         case .review:
             // most severe first, then in time order
-            return segments.filter(\.needsReview).sorted {
+            shown = segments.filter(\.needsReview).sorted {
                 (Self.rank($0.reviewPriority), $0.start) < (Self.rank($1.reviewPriority), $1.start)
             }
         }
+        guard let searchMatches else { return shown }
+        return shown.filter { searchMatches.contains($0.id) }
     }
 
     /// The engine sets each segment's review priority from its flags

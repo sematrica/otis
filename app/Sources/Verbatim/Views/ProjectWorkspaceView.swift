@@ -29,6 +29,13 @@ struct ProjectWorkspaceView: View {
                 .toolbar { toolbar(project) }
                 .task(id: model.transcriptRevision[projectID, default: 0]) {
                     await workspace.refresh(knownRevision: model.knownTranscriptRevision[projectID])
+                    if let focus = model.pendingFocus.removeValue(forKey: projectID) {
+                        // opened from a search result: find the words, show the passage, cue the player
+                        workspace.searchText = focus.query
+                        await workspace.runSearch()
+                        workspace.focus(on: focus.segmentID)
+                        player.seek(to: focus.time)
+                    }
                 }
                 .onAppear { player.load(project.sourceURL) }
                 .onDisappear { player.stop() }

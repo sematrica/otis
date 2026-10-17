@@ -16,12 +16,19 @@ struct TranscriptPanel: View {
     @State private var showingOriginal: Segment?
     @State private var removing: Segment?
     @EnvironmentObject private var app: AppModel
+    @FocusState private var findFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
             header
+            findBar
             Divider()
             content
+        }
+        .task(id: workspace.searchText) {
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled else { return }
+            await workspace.runSearch()
         }
         .sheet(item: $editing) { segment in
             EditTextSheet(segment: segment) { text in Task { await workspace.editText(segment, to: text) } }
@@ -70,7 +77,8 @@ struct TranscriptPanel: View {
                         isActive: segment.id == active,
                         isSelected: segment.id == workspace.selectedSegmentID,
                         playbackTime: segment.id == active ? player.currentTime : nil,
-                        actions: actions(for: segment)
+                        actions: actions(for: segment),
+                        searchTerms: workspace.searchTerms
                     )
                     .id(segment.id)
                     .listRowBackground(rowBackground(segment, active: active))
@@ -78,6 +86,11 @@ struct TranscriptPanel: View {
                 .listStyle(.inset)
                 .onChange(of: active) { id in
                     guard follow, player.isPlaying, let id else { return }
+                    withAnimation(.easeInOut(duration: 0.25)) { proxy.scrollTo(id, anchor: .center) }
+                }
+                .onChange(of: workspace.scrollRequest) { id in
+                    guard let id else { return }
+                    workspace.scrollRequest = nil
                     withAnimation(.easeInOut(duration: 0.25)) { proxy.scrollTo(id, anchor: .center) }
                 }
             }
@@ -110,6 +123,36 @@ struct TranscriptPanel: View {
                 Color.clear
             }
         }
+    }
+
+    /// Find in this transcript: matching passages only, searched words marked.
+    private var findBar: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass").foregroundStyle(.secondary).font(.caption)
+            TextField("Find in transcript", text: $workspace.searchText)
+                .textFieldStyle(.plain)
+                .focused($findFocused)
+                .onExitCommand { workspace.searchText = "" }
+            if let matches = workspace.searchMatches {
+                Text(matches.isEmpty ? "No match" : "\(matches.count) passage\(matches.count == 1 ? "" : "s")")
+                    .font(.caption).foregroundStyle(.secondary)
+                Button {
+                    workspace.searchText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Show all passages")
+            }
+            // ⌘F focuses the field
+            Button("Find") { findFocused = true }
+                .keyboardShortcut("f", modifiers: .command)
+                .frame(width: 0, height: 0)
+                .opacity(0)
+                .accessibilityHidden(true)
+        }
+        .padding(.horizontal, 12)
+        .padding(.bottom, 6)
     }
 
     private var header: some View {

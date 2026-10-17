@@ -41,6 +41,8 @@ struct SegmentRow: View {
     /// Playback position while this segment is playing (for word highlighting).
     let playbackTime: Double?
     let actions: SegmentActions
+    /// Words being searched for (Find): matching words are marked.
+    var searchTerms: [String] = []
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
@@ -113,10 +115,14 @@ struct SegmentRow: View {
             return AttributedString(segment.text.trimmingCharacters(in: .whitespaces))
         }
         var result = AttributedString()
+        let match = SearchMatcher(terms: searchTerms)
         for (i, word) in words.enumerated() {
             var piece = AttributedString(i == 0 ? word.text.trimmingCharacters(in: .whitespaces) : word.text)
             if word.isLowConfidence {
                 piece[AttributeScopes.SwiftUIAttributes.ForegroundColorAttribute.self] = Color.orange
+            }
+            if match.matches(word.text) {
+                piece[AttributeScopes.SwiftUIAttributes.BackgroundColorAttribute.self] = Color.yellow.opacity(0.45)
             }
             if let playbackTime, let start = word.start, let end = word.end,
                playbackTime >= start, playbackTime < max(end, start + 0.05) {
@@ -228,6 +234,41 @@ struct WordingChoice: Identifiable, Hashable {
 
 /// Words of the selected segment as buttons: click to play from a word,
 /// right-click to split the segment before it.
+/// Marks words the way the engine's search matches them: by their beginning,
+/// ignoring case and accents (by containment in scripts without spaces).
+struct SearchMatcher {
+    private let prefixes: [String]
+
+    init(terms: [String]) {
+        prefixes = terms.flatMap { $0.split(whereSeparator: { $0.isWhitespace }) }
+            .map { Self.fold(String($0)) }
+            .filter { !$0.isEmpty }
+    }
+
+    func matches(_ word: String) -> Bool {
+        guard !prefixes.isEmpty else { return false }
+        let folded = Self.fold(word)
+        return prefixes.contains { folded.hasPrefix($0) || (Self.unspaced($0) && folded.contains($0)) }
+    }
+
+    static func fold(_ text: String) -> String {
+        text.folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: nil)
+            .trimmingCharacters(in: .punctuationCharacters.union(.whitespaces).union(.symbols))
+    }
+
+    private static func unspaced(_ text: String) -> Bool {
+        text.unicodeScalars.contains { scalar in
+            switch scalar.value {
+            case 0x0E00...0x0EFF, 0x1000...0x109F, 0x1780...0x17FF, 0x3040...0x30FF, 0x3400...0x4DBF,
+                 0x4E00...0x9FFF, 0xAC00...0xD7AF, 0xF900...0xFAFF, 0xFF66...0xFF9F:
+                return true
+            default:
+                return false
+            }
+        }
+    }
+}
+
 struct WordFlow: View {
     let words: [Word]
     let playbackTime: Double?
