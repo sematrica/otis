@@ -28,11 +28,22 @@ from ..errors import EngineError, InvalidParams
 OLLAMA_DEFAULT_URL = "http://127.0.0.1:11434"
 OPENAI_DEFAULT_URL = "https://api.openai.com/v1"
 REQUEST_TIMEOUT_S = 300.0
+#: Longest answer accepted from a local model. Small models sometimes repeat
+#: themselves without end when their output must follow a JSON schema; without
+#: a limit that only ends at the request timeout.
+MAX_ANSWER_TOKENS = 4096
 
 
 class LLMError(EngineError):
     def __init__(self, message: str, data: dict[str, Any] | None = None):
         super().__init__(message, code="llm_error", data=data)
+
+
+class AnswerCutOff(LLMError):
+    def __init__(self, content: str | None, limit: int):
+        super().__init__(f"The model's answer was cut off after {limit} tokens (small models sometimes repeat "
+                         "themselves); try a larger model.")
+        self.content = content
 
 
 def is_local(url: str) -> bool:
@@ -110,6 +121,7 @@ class Provider(abc.ABC):
             if not isinstance(parsed, dict):
                 raise ValueError("the answer is not a JSON object")
         except LLMError as exc:
+            content = getattr(exc, "content", content)
             exchange = Exchange(request, content, time.monotonic() - started, exc.message)
             raise LLMError(exc.message, data={"exchange": exchange.to_dict()}) from exc
         except ValueError as exc:
@@ -150,12 +162,14 @@ class OllamaProvider(Provider):
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
             "stream": False,
             "format": schema,  # structured output (Ollama >= 0.5)
-            "options": {"temperature": 0, "seed": 0},
+            "options": {"temperature": 0, "seed": 0, "num_predict": MAX_ANSWER_TOKENS},
         }
         data = self._check(client.post(f"{self.base_url}/api/chat", json=body), "Ollama")
         content = (data.get("message") or {}).get("content")
         if not isinstance(content, str):
             raise LLMError("Ollama sent no answer.")
+        if data.get("done_reason") == "length":
+            raise AnswerCutOff(content, MAX_ANSWER_TOKENS)
         return content
 
 

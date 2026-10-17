@@ -424,3 +424,40 @@ def test_no_acoustic_support_over_detected_speech_is_a_weaker_doubt():
         assert segments[0].text == "oh i dont hear that in new jersey now"  # words are never removed
         result = next(f for f in segments[0].flags if f["type"] == "rechecked")
         assert result["speech_detected"] is (coverage > 0.5) and counts["no_acoustic_support"] == 1
+
+
+def test_a_local_answer_that_never_ends_is_cut_off_and_recorded():
+    import http.server
+    import json as _json
+    import threading
+
+    from verbatim_engine.llm.providers import MAX_ANSWER_TOKENS, LLMError
+
+    seen = []
+
+    class Ollama(http.server.BaseHTTPRequestHandler):
+        def do_POST(self):  # noqa: N802 - http.server's naming
+            seen.append(_json.loads(self.rfile.read(int(self.headers["Content-Length"]))))
+            body = _json.dumps({"message": {"content": '{"suggestions": [' + " " * 50},
+                                "done": True, "done_reason": "length"}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *_):
+            pass
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Ollama)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        provider = make_provider("ollama", "small", base_url=f"http://127.0.0.1:{server.server_address[1]}")
+        with pytest.raises(LLMError) as raised:
+            provider.complete_json("system", "user", {"type": "object"})
+    finally:
+        server.shutdown()
+    assert seen[0]["options"]["num_predict"] == MAX_ANSWER_TOKENS
+    assert "cut off" in raised.value.message
+    exchange = raised.value.data["exchange"]
+    assert exchange["response"].startswith('{"suggestions": [') and "cut off" in exchange["error"]

@@ -1,14 +1,14 @@
 {
-  "id": 513,
+  "id": 862,
   "result": {
     "projects": [
       {
-        "created_at": "2026-10-17T14:59:34.724Z",
+        "created_at": "2026-10-17T15:08:27.974Z",
         "duration": 30.0,
         "has_video": false,
-        "id": "5d4dedb8b2f247e4828e21ca571d4abb",
+        "id": "4b02dcded15f41bb8e49d9f153bac17b",
         "language": "en",
-        "last_job_id": "8ff778c0f1ed47b2b65cce9f1ea07bc4",
+        "last_job_id": "96237b6e139a49aca0804fa5f6c6d7a1",
         "media": {
           "audio_streams": [
             {
@@ -27,7 +27,7 @@
           "format_name": "wav",
           "has_audio": true,
           "has_video": false,
-          "mtime_ns": 1792122657343018820,
+          "mtime_ns": 1792249338307882354,
           "path": "/Users/example/Downloads/call.wav",
           "selected_audio_stream": 0,
           "size_bytes": 960104,
@@ -37,7 +37,7 @@
         "segment_count": 10,
         "source": {
           "kind": "file",
-          "mtime_ns": 1792122657343018820,
+          "mtime_ns": 1792249338307882354,
           "path": "/Users/example/Downloads/call.wav",
           "size_bytes": 960104,
           "url": null
@@ -45,15 +45,15 @@
         "source_meta": null,
         "status": "ready",
         "title": "Call",
-        "updated_at": "2026-10-17T15:00:54.900Z"
+        "updated_at": "2026-10-17T15:09:05.676Z"
       },
       {
-        "created_at": "2026-10-17T14:59:25.936Z",
+        "created_at": "2026-10-17T15:08:21.938Z",
         "duration": 11.0,
         "has_video": false,
-        "id": "db140125f90f4684a3803998b5590f63",
+        "id": "fdf3e7ef3f7840af8670f591bc772ba7",
         "language": "en",
-        "last_job_id": "d852aaf266d34462831ee94b592e565d",
+        "last_job_id": "afbb8fce37344323860953b6351ded90",
         "media": {
           "audio_streams": [
             {
@@ -72,8 +72,8 @@
           "format_name": "wav",
           "has_audio": true,
           "has_video": false,
-          "mtime_ns": 1792249166473844892,
-          "path": "/Users/example/Library/Application Support/Verbatim/media/db140125f90f4684a3803998b5590f63/audio.wav",
+          "mtime_ns": 1792249702338436384,
+          "path": "/Users/example/Library/Application Support/Verbatim/media/fdf3e7ef3f7840af8670f591bc772ba7/audio.wav",
           "selected_audio_stream": 0,
           "size_bytes": 352078,
           "start_time": 0.0,
@@ -82,15 +82,15 @@
         "segment_count": 2,
         "source": {
           "kind": "url",
-          "mtime_ns": 1792249166473844892,
-          "path": "/Users/example/Library/Application Support/Verbatim/media/db140125f90f4684a3803998b5590f63/audio.wav",
+          "mtime_ns": 1792249702338436384,
+          "path": "/Users/example/Library/Application Support/Verbatim/media/fdf3e7ef3f7840af8670f591bc772ba7/audio.wav",
           "size_bytes": 352078,
           "url": "http://127.0.0.1:8000/index.html"
         },
         "source_meta": {
           "ads_note": "Transcribed from the media file retrieved from YouTube. Ads that YouTube inserts while a video plays are not part of that file and are not transcribed. Sponsor messages or ads that are part of the video itself are transcribed like any other speech.",
           "authorization": {
-            "confirmed_at": "2026-10-17T14:59:25.936Z",
+            "confirmed_at": "2026-10-17T15:08:21.938Z",
             "statement": "I am authorized to download and transcribe this video: it is my own, it is licensed for reuse, or I have the rights holder's permission."
           },
           "channel": null,
@@ -138,15 +138,15 @@
         },
         "status": "ready",
         "title": "JFK talk (1)",
-        "updated_at": "2026-10-17T14:59:34.117Z"
+        "updated_at": "2026-10-17T15:08:27.730Z"
       },
       {
-        "created_at": "2026-10-17T14:59:11.544Z",
+        "created_at": "2026-10-17T15:08:11.427Z",
         "duration": 11.0,
         "has_video": false,
-        "id": "1b85f4fcd8164465a7109c6cf1eb67f4",
+        "id": "e7d02837f2f24e86a316694eea9ef5bd",
         "language": "en",
-        "last_job_id": "94c362b5b48a4b009a6232183c2b85de",
+        "last_job_id": "f3f18be917874beda6093cf09997a0ca",
         "media": {
           "audio_streams": [
             {
@@ -165,7 +165,7 @@
           "format_name": "wav",
           "has_audio": true,
           "has_video": false,
-          "mtime_ns": 1792037526637908643,
+          "mtime_ns": 1792249283581427646,
           "path": "/Users/example/verbatim/engine/tests/corpus/jfk.wav",
           "selected_audio_stream": 0,
           "size_bytes": 352078,
@@ -175,7 +175,7 @@
         "segment_count": 1,
         "source": {
           "kind": "file",
-          "mtime_ns": 1792037526637908643,
+          "mtime_ns": 1792249283581427646,
           "path": "/Users/example/verbatim/engine/tests/corpus/jfk.wav",
           "size_bytes": 352078,
           "url": null
@@ -183,15 +183,15 @@
         "source_meta": null,
         "status": "ready",
         "title": "Queued first",
-        "updated_at": "2026-10-17T14:59:24.228Z"
+        "updated_at": "2026-10-17T15:08:21.424Z"
       },
       {
-        "created_at": "2026-10-17T14:59:11.552Z",
+        "created_at": "2026-10-17T15:08:11.433Z",
         "duration": 11.0,
         "has_video": false,
-        "id": "5dfc18c09058446baf03e3d61743bc57",
+        "id": "2ccb3f833579440f803304ca4fdbef63",
         "language": "en",
-        "last_job_id": "196636e53e1944fdb2a8e65ce13bf95f",
+        "last_job_id": "a74a70fdea8048e5857f78c5bf7e2f17",
         "media": {
           "audio_streams": [
             {
@@ -210,7 +210,7 @@
           "format_name": "wav",
           "has_audio": true,
           "has_video": false,
-          "mtime_ns": 1792037526637908643,
+          "mtime_ns": 1792249283581427646,
           "path": "/Users/example/verbatim/engine/tests/corpus/jfk.wav",
           "selected_audio_stream": 0,
           "size_bytes": 352078,
@@ -220,7 +220,7 @@
         "segment_count": 1,
         "source": {
           "kind": "file",
-          "mtime_ns": 1792037526637908643,
+          "mtime_ns": 1792249283581427646,
           "path": "/Users/example/verbatim/engine/tests/corpus/jfk.wav",
           "size_bytes": 352078,
           "url": null
@@ -228,15 +228,15 @@
         "source_meta": null,
         "status": "ready",
         "title": "Queued second",
-        "updated_at": "2026-10-17T14:59:17.549Z"
+        "updated_at": "2026-10-17T15:08:16.418Z"
       },
       {
-        "created_at": "2026-10-17T14:58:35.269Z",
+        "created_at": "2026-10-17T15:08:05.671Z",
         "duration": 11.0,
         "has_video": false,
-        "id": "77d5ea44527440c7b79f576a9e89b1a8",
+        "id": "35a6637f353041a09ba6d848f87d83bd",
         "language": "en",
-        "last_job_id": "d58bb8dcc7dd4f2c8ae2f1e912282ff8",
+        "last_job_id": "ae8b8c068ea147b8b235cd545cbab56a",
         "media": {
           "audio_streams": [
             {
@@ -255,7 +255,7 @@
           "format_name": "wav",
           "has_audio": true,
           "has_video": false,
-          "mtime_ns": 1792037526637908643,
+          "mtime_ns": 1792249283581427646,
           "path": "/Users/example/verbatim/engine/tests/corpus/jfk.wav",
           "selected_audio_stream": 0,
           "size_bytes": 352078,
@@ -265,7 +265,7 @@
         "segment_count": 2,
         "source": {
           "kind": "file",
-          "mtime_ns": 1792037526637908643,
+          "mtime_ns": 1792249283581427646,
           "path": "/Users/example/verbatim/engine/tests/corpus/jfk.wav",
           "size_bytes": 352078,
           "url": null
@@ -273,7 +273,7 @@
         "source_meta": null,
         "status": "ready",
         "title": "JFK",
-        "updated_at": "2026-10-17T14:59:11.446Z"
+        "updated_at": "2026-10-17T15:08:11.153Z"
       }
     ]
   }

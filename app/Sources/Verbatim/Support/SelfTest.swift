@@ -47,7 +47,7 @@ struct SelfTest {
             backend: env["VERBATIM_SELF_TEST_BACKEND"] ?? "faster-whisper",
             output: URL(fileURLWithPath: output, isDirectory: true),
             speakers: env["VERBATIM_SELF_TEST_SPEAKERS"] == "1",
-            page: env["VERBATIM_SELF_TEST_PAGE"]
+            page: env["VERBATIM_SELF_TEST_PAGE"].flatMap { $0.isEmpty ? nil : $0 }
         )
     }
 
@@ -55,7 +55,8 @@ struct SelfTest {
     /// only; the engine accepts nothing but loopback addresses there.
     static func engineEnvironment() -> [String: String] {
         let env = ProcessInfo.processInfo.environment
-        guard env["VERBATIM_SELF_TEST_OUTPUT"] != nil, let host = env["VERBATIM_TEST_MEDIA_HOST"] else { return [:] }
+        guard env["VERBATIM_SELF_TEST_OUTPUT"] != nil, let host = env["VERBATIM_TEST_MEDIA_HOST"], !host.isEmpty
+        else { return [:] }
         return ["VERBATIM_TEST_MEDIA_HOST": host]
     }
 
