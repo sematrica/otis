@@ -81,13 +81,18 @@ struct ProjectWorkspaceView: View {
     @ToolbarContentBuilder
     private func toolbar(_ project: Project) -> some ToolbarContent {
         ToolbarItemGroup {
-            Button {
-                Task { await model.exportText(project) }
+            Menu {
+                ForEach(ExportFormat.allCases) { format in
+                    Button(format.displayName) { Task { await model.export(project, format: format) } }
+                }
+                Button("CSV, One Row per Word") {
+                    Task { await model.export(project, format: .csv, options: ExportOptions(words: true)) }
+                }
             } label: {
-                Label("Export TXT", systemImage: "square.and.arrow.up")
+                Label("Export", systemImage: "square.and.arrow.up")
             }
             .disabled(project.segmentCount == 0)
-            .help("Export the transcript (with speaker names) as plain text")
+            .help("Export the transcript as text, subtitles (SRT, WebVTT), JSON, CSV or Markdown")
 
             Button {
                 transcribingAgain = true

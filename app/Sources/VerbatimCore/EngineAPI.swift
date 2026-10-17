@@ -78,10 +78,33 @@ public struct SuggestionsParams: Encodable, Sendable { public let projectId: Str
 public struct ExportOptions: Codable, Hashable, Sendable {
     public var timestamps: Bool
     public var header: Bool
-    public init(timestamps: Bool = true, header: Bool = true) {
+    /// CSV: one row per word instead of per segment.
+    public var words: Bool?
+    public init(timestamps: Bool = true, header: Bool = true, words: Bool? = nil) {
         self.timestamps = timestamps
         self.header = header
+        self.words = words
     }
+}
+
+/// The engine's export formats (``export.formats``).
+public enum ExportFormat: String, CaseIterable, Sendable, Identifiable {
+    case txt, srt, vtt, json, csv, md
+
+    public var id: String { rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .txt: return "Plain Text"
+        case .srt: return "SubRip Subtitles (SRT)"
+        case .vtt: return "WebVTT Subtitles"
+        case .json: return "JSON (everything, with words and the original transcript)"
+        case .csv: return "CSV Spreadsheet"
+        case .md: return "Markdown"
+        }
+    }
+
+    public var fileExtension: String { rawValue }
 }
 
 public struct ExportParams: Encodable, Sendable {

@@ -26,7 +26,7 @@ def _add_data_dir(parser: argparse.ArgumentParser) -> None:
 
 def _cmd_transcribe(args: argparse.Namespace) -> int:
     from .errors import EngineError
-    from .export import render, write_atomic
+    from .export import write_atomic
     from .jobs.options import normalize_options, resolve
     from .rpc.service import EngineService
     from .paths import EnginePaths
@@ -88,8 +88,7 @@ def _cmd_transcribe(args: argparse.Namespace) -> int:
         if job["status"] != "completed":
             print(f"error: {job['error']['message'] if job['error'] else job['status']}", file=sys.stderr)
             return 1
-        transcript = repo.get_transcript(service.db, project["id"])
-        text = render("txt", repo.get_project(service.db, project["id"]), transcript, {})
+        text = service.export_render({"project_id": project["id"], "format": args.format})["content"]
         if args.output:
             write_atomic(args.output, text)
             print(f"wrote {args.output}", file=sys.stderr)
@@ -152,7 +151,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("model_id")
     _add_data_dir(p)
 
-    p = sub.add_parser("transcribe", help="transcribe a file and print or write plain text")
+    p = sub.add_parser("transcribe", help="transcribe a file and print or write the transcript")
     p.add_argument("file")
     p.add_argument("--mode", default="balanced", choices=["fast", "balanced", "maximum"])
     p.add_argument("--backend", default="auto", choices=["auto", "faster-whisper", "mlx"])
@@ -169,6 +168,7 @@ def main(argv: list[str] | None = None) -> int:
                    help="forced word alignment (default: per mode)")
     p.add_argument("--alignment-model", default=None, help="catalog id of the alignment model to use")
     p.add_argument("--output", "-o", default=None)
+    p.add_argument("--format", "-f", default="txt", choices=["txt", "srt", "vtt", "json", "csv", "md"])
     p.add_argument("--json", action="store_true", help="print job details to stderr")
     _add_data_dir(p)
 

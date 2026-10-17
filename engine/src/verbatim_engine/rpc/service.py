@@ -12,7 +12,7 @@ from typing import Any, Callable
 from .. import PROTOCOL_VERSION, __version__
 from ..asr.registry import describe_backends
 from ..errors import InvalidParams, NotFound
-from ..export import FORMATS, render, suggested_filename, write_atomic
+from ..export import FORMATS, WORD_FORMATS, render, suggested_filename, write_atomic
 from ..jobs.manager import JobManager
 from ..llm.providers import make_provider
 from ..llm.runs import ReviewManager, decide, get_run, get_suggestion, list_runs, list_suggestions
@@ -288,10 +288,15 @@ class EngineService:
         project_id = _require(params, "project_id")
         fmt = params.get("format", "txt")
         project = repo.get_project(self.db, project_id)
-        transcript = repo.get_transcript(self.db, project_id, include_words=False)
+        transcript = repo.get_transcript(self.db, project_id, include_words=fmt in WORD_FORMATS)
         if not transcript["segments"]:
             raise NotFound("This project has no transcript yet.")
-        return render(fmt, project, transcript, params.get("options") or {}), suggested_filename(project, fmt)
+        options = dict(params.get("options") or {})
+        if fmt == "json":
+            options["_original"] = repo.get_original_transcript(self.db, project_id)
+            if transcript.get("job_id"):
+                transcript["_job"] = repo.get_job(self.db, transcript["job_id"])
+        return render(fmt, project, transcript, options), suggested_filename(project, fmt)
 
     def export_render(self, params: dict[str, Any]) -> dict[str, Any]:
         content, filename = self._render(params)

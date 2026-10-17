@@ -301,15 +301,16 @@ final class AppModel: ObservableObject {
         try await client.transcript(projectId: project.id, includeWords: true)
     }
 
-    func exportText(_ project: Project) async {
+    /// Asks where to save, then has the engine write the file (atomically).
+    func export(_ project: Project, format: ExportFormat, options: ExportOptions = .init()) async {
         do {
-            let preview = try await client.renderExport(projectId: project.id)
+            let preview = try await client.renderExport(projectId: project.id, format: format.rawValue, options: options)
             let panel = NSSavePanel()
             panel.nameFieldStringValue = preview.suggestedFilename
-            panel.allowedContentTypes = [.plainText]
+            panel.allowedContentTypes = [UTType(filenameExtension: format.fileExtension) ?? .plainText]
             panel.canCreateDirectories = true
             guard panel.runModal() == .OK, let url = panel.url else { return }
-            _ = try await client.writeExport(projectId: project.id, to: url.path)
+            _ = try await client.writeExport(projectId: project.id, to: url.path, format: format.rawValue, options: options)
         } catch {
             report(error, title: "Export failed")
         }
