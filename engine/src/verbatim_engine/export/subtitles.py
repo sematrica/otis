@@ -134,3 +134,12 @@ def render_vtt(project: dict[str, Any], transcript: dict[str, Any], options: dic
             body = f"<v {voice}>{body}</v>"
         out += [f"{format_precise(cue.start)} --> {format_precise(cue.end)}", body, ""]
     return "\n".join(out)
+
+
+def render_captions(cues: list[dict[str, Any]], fmt: str) -> str:
+    """Published captions as they are, in SRT or WebVTT."""
+    if fmt == "srt":
+        return "\n\n".join(f"{i}\n{format_precise(c['start'], ',')} --> {format_precise(c['end'], ',')}\n{c['text']}"
+                           for i, c in enumerate(cues, start=1)) + ("\n" if cues else "")
+    body = [f"{format_precise(c['start'])} --> {format_precise(c['end'])}\n{_vtt_escape(c['text'])}\n" for c in cues]
+    return "WEBVTT\n\n" + "\n".join(body)

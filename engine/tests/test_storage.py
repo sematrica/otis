@@ -43,7 +43,7 @@ def test_project_job_transcript_lifecycle(env, jfk_path):
     assert project["status"] == "new" and project["duration"] == pytest.approx(11.0, abs=0.01)
     job = repo.create_job(db, project["id"], "balanced", normalize_options({}))
     assert job["status"] == "queued"
-    assert [s["stage"] for s in job["stages"]] == [s for s, _ in repo.STAGES]
+    assert [s["stage"] for s in job["stages"]] == repo.JOB_KIND_STAGES["transcribe"]
     assert repo.get_project(db, project["id"])["status"] == "queued"
 
     repo.mark_job_running(db, job["id"], 1234)

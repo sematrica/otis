@@ -197,6 +197,12 @@ class JobManager:
         self._wake.set()
         return job
 
+    def announce_new(self, job_id: str) -> None:
+        """A job created elsewhere (a YouTube import) was queued."""
+        self._announce(job_id)
+        self._queue_changed()
+        self._wake.set()
+
     def submit_recheck(self, project_id: str, segment_ids: list[int]) -> dict[str, Any]:
         """Re-check chosen passages of the current transcript (passes 6-7), with
         the settings and extracted audio of the job that produced it."""

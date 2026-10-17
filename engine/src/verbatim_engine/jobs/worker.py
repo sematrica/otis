@@ -42,7 +42,7 @@ from ..diarization.assign import assign_speakers
 from ..diarization.clustering import SpeakerBounds
 from ..diarization.pipeline import DiarizationResult, Diarizer
 from ..errors import Cancelled, EngineError, SourceChanged
-from ..media.probe import check_unchanged
+from ..media.probe import check_unchanged, probe
 from ..models.manager import ModelManager
 from ..paths import EnginePaths
 from ..storage import repo
@@ -55,6 +55,9 @@ from ..verify.quality import SpeechMap, analyse, build_speech_map, missing_speec
 from ..verify.recheck import Recheck, summary_text
 from ..verify.retranscribe import load_decodes
 from ..verify.validate import validate
+from ..youtube import captions as youtube_captions
+from ..youtube import fetch as youtube_fetch
+from ..youtube import urls as youtube_urls
 from .options import CHUNK_PAD_SECONDS, ResolvedJob, resolve
 
 log = logging.getLogger(__name__)
@@ -127,6 +130,8 @@ class Worker:
         try:
             if job["kind"] == "recheck":
                 self._run_recheck(project, options)
+            elif job["kind"] == "youtube":
+                self._run_youtube(project, options)
             else:
                 self._run(project, options)
         except Cancelled as exc:
@@ -239,6 +244,85 @@ class Worker:
             reader.close()
 
     # ------------------------------------------------------------------ on-demand re-check
+
+    def _run_youtube(self, project: dict[str, Any], options: dict[str, Any]) -> None:
+        """Retrieve the media of a YouTube project (and the captions the user
+        chose), then transcribe it like a local file. An interrupted retrieval
+        continues where it stopped; finished media is never retrieved twice."""
+        request = options.get("youtube") or {}
+        target = youtube_urls.validate(project["source"]["url"] or "")  # checked again, here too
+        meta = dict(project.get("source_meta") or {})
+        source = project["source"]
+        if source["path"] and check_unchanged(source["path"], source["size_bytes"], source["mtime_ns"]):
+            repo.start_stage(self.db, self.job_id, "download")
+            self._finish("download", detail="Reused the media retrieved earlier.")
+        else:
+            self._start("download", unit="bytes", total=None, done=0)
+            info = youtube_fetch._extract(target, {"skip_download": True})
+            refused = youtube_fetch.refusal(info)
+            if refused is not None:
+                raise EngineError(refused["message"], code=refused["code"])
+            folder = self.paths.media_dir(project["id"])
+            try:
+                retrieved = youtube_fetch.retrieve(
+                    target, info, folder, video=bool(request.get("video", True)),
+                    progress=lambda done, total: self._progress("download", done, total),
+                    should_cancel=self._poll_cancel)
+            except youtube_fetch.Cancelled:
+                self._check_cancel()
+                raise Cancelled("The job was cancelled.") from None
+            warnings = []
+            tracks = []
+            if request.get("captions"):
+                try:
+                    tracks = youtube_fetch.retrieve_captions(target, request["captions"], folder / "captions")
+                    repo.save_captions(self.db, project["id"], tracks, source="youtube")
+                except EngineError as exc:
+                    warnings.append(f"Captions could not be retrieved: {exc.message}")
+            media = probe(str(retrieved.path))
+            meta["retrieved"] = {
+                "file": retrieved.path.name, "bytes": retrieved.bytes, "formats": retrieved.formats,
+                "has_video": media.has_video, "duration": media.duration,
+                "captions": [{k: t[k] for k in ("language", "kind", "name")} for t in tracks],
+                "warnings": warnings,
+            }
+            expected = meta.get("duration")
+            if expected and media.duration and abs(media.duration - expected) > 2.0:
+                meta["retrieved"]["warnings"].append(
+                    f"The retrieved media lasts {media.duration:.0f} s; YouTube lists {expected:.0f} s.")
+            repo.set_project_media(self.db, project["id"], media, meta)
+            detail = f"{retrieved.bytes / 1e6:.1f} MB" + (f", {len(tracks)} caption track(s)" if tracks else "")
+            self._finish("download", detail=detail)
+        self._run(repo.get_project(self.db, project["id"]), options)
+
+    def _source_marks(self, project: dict[str, Any], segments: list[TSegment], language: str | None,
+                      effective: dict[str, Any]) -> None:
+        """Marks that come from the source rather than the audio: where the
+        published captions clearly differ, and the creator's sponsor chapters."""
+        compared = []
+        for track in repo.list_captions(self.db, project["id"], include_cues=True):
+            if not youtube_captions.same_language(track["language"], language):
+                continue
+            cues = [youtube_captions.Cue(c["start"], c["end"], c["text"]) for c in track["cues"]]
+            flags = youtube_captions.compare(segments, cues, kind=track["kind"], language=track["language"])
+            for index, flag in flags.items():
+                segments[index].flags.append(flag)
+            compared.append({"language": track["language"], "kind": track["kind"], "passages_differ": len(flags)})
+        chapters = youtube_fetch.sponsor_chapters({"chapters": [
+            {"start_time": c.get("start"), "end_time": c.get("end"), "title": c.get("title")}
+            for c in (project.get("source_meta") or {}).get("chapters") or []]})
+        marked = 0
+        for chapter in chapters:
+            if chapter["start"] is None or chapter["end"] is None:
+                continue
+            for seg in segments:
+                if seg.start < chapter["end"] and seg.end > chapter["start"]:
+                    seg.flags.append({"type": "in_sponsor_chapter", "title": chapter["title"],
+                                      "start": chapter["start"], "end": chapter["end"]})
+                    marked += 1
+        if compared or chapters:
+            effective["source"] = {"captions_compared": compared, "sponsor_chapters": chapters,
+                                   "segments_in_sponsor_chapters": marked}
 
     def _run_recheck(self, project: dict[str, Any], options: dict[str, Any]) -> None:
         """Re-check passages the user picked (passes 6-7) on the current
@@ -443,6 +527,9 @@ class Worker:
         # 11. finalize --------------------------------------------------------------
         self._check_cancel()
         self._start("finalize")
+        if project["source"]["kind"] == "url":
+            self._source_marks(project, segments, language, effective)
+            repo.set_effective(self.db, self.job_id, effective)
         speakers = speakers_in_order(segments) if diarization is not None else []
         if diarization is not None:
             effective["diarization"]["speakers_in_transcript"] = len(speakers)
@@ -723,7 +810,8 @@ def main(job_id: str, data_dir: str | None) -> int:
 
 
 def default_env() -> dict[str, str]:
-    """Environment for worker processes: never touch the network."""
+    """Environment for worker processes. Models are never fetched by a job;
+    only a YouTube import job uses the network, for the video the user chose."""
     env = dict(os.environ)
     env["HF_HUB_OFFLINE"] = "1"
     env["HF_HUB_DISABLE_TELEMETRY"] = "1"

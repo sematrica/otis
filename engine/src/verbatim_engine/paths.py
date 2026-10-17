@@ -66,6 +66,17 @@ class EnginePaths:
             raise ValueError(f"invalid job id: {job_id!r}")
         return self.work_root / job_id
 
+    def media_dir(self, project_id: str) -> Path:
+        """Media the engine retrieved for a project (YouTube imports)."""
+        if not project_id or not all(c in "0123456789abcdef" for c in project_id):
+            raise ValueError(f"invalid project id: {project_id!r}")
+        return self.data_dir / "media" / project_id
+
+    def remove_media_dir(self, project_id: str) -> None:
+        directory = self.media_dir(project_id)
+        if directory.exists():
+            shutil.rmtree(directory, ignore_errors=True)
+
     def remove_job_dir(self, job_id: str) -> None:
         directory = self.job_dir(job_id)
         if directory.exists():

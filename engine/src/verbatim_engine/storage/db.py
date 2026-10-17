@@ -302,8 +302,28 @@ UPDATE jobs SET queue_position = rowid;
 CREATE INDEX jobs_queue ON jobs(status, queue_position);
 """
 
+SCHEMA_V6 = """
+-- Stage 4: media retrieved from YouTube. source_meta_json describes the
+-- source (video id, title, channel, licence, chapters, the user's
+-- confirmation that they may retrieve it, what was retrieved); captions
+-- published with it are kept separately and never merged into a transcript.
+ALTER TABLE projects ADD COLUMN source_meta_json TEXT;
+
+CREATE TABLE captions (
+    id          INTEGER PRIMARY KEY,
+    project_id  TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    language    TEXT NOT NULL,
+    name        TEXT,
+    kind        TEXT NOT NULL CHECK (kind IN ('manual','auto')),
+    source      TEXT NOT NULL,
+    fetched_at  TEXT NOT NULL,
+    cues_json   TEXT NOT NULL
+);
+CREATE INDEX captions_by_project ON captions(project_id);
+"""
+
 MIGRATIONS: list[tuple[int, str, bool]] = [(1, SCHEMA_V1, False), (2, SCHEMA_V2, True), (3, SCHEMA_V3, False),
-                                           (4, SCHEMA_V4, False), (5, SCHEMA_V5, False)]
+                                           (4, SCHEMA_V4, False), (5, SCHEMA_V5, False), (6, SCHEMA_V6, False)]
 LATEST_VERSION = MIGRATIONS[-1][0]
 
 

@@ -23,6 +23,7 @@ RESUMABLE_JOB_STATUSES = ("failed", "cancelled", "interrupted")
 
 #: Pipeline stages in execution order with user-facing labels.
 STAGES: list[tuple[str, str]] = [
+    ("download", "Retrieving from YouTube"),
     ("prepare", "Checking source"),
     ("extract", "Extracting audio"),
     ("analyze", "Analyzing audio"),
@@ -38,8 +39,10 @@ STAGES: list[tuple[str, str]] = [
 STAGE_ORDINALS = {name: i for i, (name, _label) in enumerate(STAGES)}
 #: Stages each kind of job goes through.
 JOB_KIND_STAGES = {
-    "transcribe": [name for name, _label in STAGES],
+    "transcribe": [name for name, _label in STAGES if name != "download"],
     "recheck": ["prepare", "retranscribe", "finalize"],
+    # a URL project's first job: retrieve the media, then transcribe it
+    "youtube": [name for name, _label in STAGES],
 }
 STAGE_LABELS = dict(STAGES)
 
@@ -71,6 +74,7 @@ def _project_row_to_dict(row, segment_count: int | None = None) -> dict[str, Any
         "media": json.loads(row["media_info_json"]),
         "last_job_id": row["last_job_id"],
         "segment_count": segment_count if segment_count is not None else 0,
+        "source_meta": json.loads(row["source_meta_json"]) if row["source_meta_json"] else None,
     }
 
 
@@ -120,6 +124,57 @@ def list_projects(db: Database, status: str | None = None, limit: int | None = N
         sql += " LIMIT ?"
         params.append(int(limit))
     return [_project_row_to_dict(r, r["segment_count"]) for r in db.query(sql, params)]
+
+
+def create_url_project(db: Database, url: str, title: str, meta: dict[str, Any], *, has_video: bool) -> dict[str, Any]:
+    """A project whose media is retrieved from ``url`` by its first job."""
+    project_id = new_id()
+    now = utc_now()
+    with db.transaction() as conn:
+        conn.execute(
+            """INSERT INTO projects (id, title, created_at, updated_at, status, source_kind, source_url,
+                   media_info_json, duration, has_video, source_meta_json)
+               VALUES (?, ?, ?, ?, 'new', 'url', ?, '{}', ?, ?, ?)""",
+            (project_id, title, now, now, url, meta.get("duration"), int(has_video), json.dumps(meta)),
+        )
+    return get_project(db, project_id)
+
+
+def set_project_media(db: Database, project_id: str, media: MediaInfo, meta: dict[str, Any] | None = None) -> None:
+    """Record the retrieved media file of a URL project (and its metadata)."""
+    with db.transaction() as conn:
+        conn.execute(
+            """UPDATE projects SET source_path = ?, source_size = ?, source_mtime_ns = ?, media_info_json = ?,
+                   duration = ?, has_video = ?, source_meta_json = COALESCE(?, source_meta_json), updated_at = ?
+               WHERE id = ?""",
+            (media.path, media.size_bytes, media.mtime_ns, json.dumps(media.to_dict()), media.duration,
+             int(media.has_video), json.dumps(meta) if meta is not None else None, utc_now(), project_id),
+        )
+
+
+def save_captions(db: Database, project_id: str, tracks: list[dict[str, Any]], source: str) -> None:
+    now = utc_now()
+    with db.transaction() as conn:
+        conn.execute("DELETE FROM captions WHERE project_id = ?", (project_id,))
+        for track in tracks:
+            conn.execute(
+                """INSERT INTO captions (project_id, language, name, kind, source, fetched_at, cues_json)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (project_id, track["language"], track.get("name"), track["kind"], source, now,
+                 json.dumps(track["cues"])),
+            )
+
+
+def list_captions(db: Database, project_id: str, include_cues: bool = False) -> list[dict[str, Any]]:
+    out = []
+    for r in db.query("SELECT * FROM captions WHERE project_id = ? ORDER BY kind DESC, id", (project_id,)):
+        cues = json.loads(r["cues_json"])
+        item = {"id": r["id"], "project_id": r["project_id"], "language": r["language"], "name": r["name"],
+                "kind": r["kind"], "source": r["source"], "fetched_at": r["fetched_at"], "cue_count": len(cues)}
+        if include_cues:
+            item["cues"] = cues
+        out.append(item)
+    return out
 
 
 def rename_project(db: Database, project_id: str, title: str) -> dict[str, Any]:

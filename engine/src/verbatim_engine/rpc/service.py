@@ -11,8 +11,11 @@ from typing import Any, Callable
 
 from .. import PROTOCOL_VERSION, __version__
 from ..asr.registry import describe_backends
-from ..errors import InvalidParams, NotFound
+from ..errors import EngineError, InvalidParams, NotFound
 from ..search import search as search_transcripts
+from ..export.subtitles import render_captions
+from ..youtube import fetch as youtube_fetch
+from ..youtube import urls as youtube_urls
 from ..export import FORMATS, WORD_FORMATS, render, suggested_filename, write_atomic
 from ..jobs.manager import JobManager
 from ..llm.providers import make_provider
@@ -27,6 +30,7 @@ from ..storage import repo
 from ..storage.db import Database
 from ..transcript.edit import TranscriptEditor
 from ..util.hardware import describe as describe_hardware
+from ..util.ids import utc_now
 from ..util.timecode import format_clock
 
 log = logging.getLogger(__name__)
@@ -55,6 +59,11 @@ def _int_list(params: dict[str, Any], key: str) -> list[int]:
     if not isinstance(value, list) or not value or not all(isinstance(v, int) and not isinstance(v, bool) for v in value):
         raise InvalidParams(f"Parameter '{key}' must be a non-empty list of integers.")
     return value
+
+
+#: What the user confirms before a YouTube video is retrieved (stored with the project).
+AUTHORIZATION_STATEMENT = ("I am authorized to download and transcribe this video: it is my own, it is licensed "
+                           "for reuse, or I have the rights holder's permission.")
 
 
 class EngineService:
@@ -124,6 +133,11 @@ class EngineService:
                                                                      _int_list(p, "segment_ids")),
             "transcript.undo": lambda p: self._edit(p, self.editor.undo),
             "transcript.redo": lambda p: self._edit(p, self.editor.redo),
+            "youtube.inspect": self.youtube_inspect,
+            "projects.createFromYouTube": self.projects_create_from_youtube,
+            "captions.list": lambda p: {"captions": repo.list_captions(
+                self.db, _require(p, "project_id"), include_cues=bool(p.get("include_cues")))},
+            "captions.export": self.captions_export,
             "queue.get": lambda _p: self.jobs.queue_state(),
             "queue.pause": lambda p: self.jobs.pause(interrupt=bool(p.get("interrupt"))),
             "queue.resume": lambda _p: self.jobs.resume_queue(),
@@ -208,8 +222,75 @@ class EngineService:
         job_ids = repo.delete_project(self.db, project_id)
         for job_id in job_ids:
             self.paths.remove_job_dir(job_id)
+        self.paths.remove_media_dir(project_id)  # media the engine retrieved (YouTube)
         self.notify("project.deleted", {"project_id": project_id})
         return {"deleted": project_id}
+
+    # ------------------------------------------------------------------ YouTube
+
+    def youtube_inspect(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Validate a link and read the video's metadata (nothing is downloaded)."""
+        return youtube_fetch.inspect(youtube_urls.validate(_require(params, "url")))
+
+    def projects_create_from_youtube(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Create a project for a YouTube video and queue its retrieval and
+        transcription. ``authorized`` must be true: the user confirms they may
+        download this video (their own, licensed for reuse, or with permission)."""
+        if params.get("authorized") is not True:
+            raise InvalidParams("Confirm that you are authorized to download and transcribe this video.",
+                                data={"reason": "authorization"})
+        target = youtube_urls.validate(_require(params, "url"))
+        options = normalize_options(params.get("options"))
+        resolve(options, self.models)  # refuse before downloading anything if the model is missing
+        inspected = youtube_fetch.inspect(target)
+        if inspected["refusal"] is not None:
+            raise EngineError(inspected["refusal"]["message"], code=inspected["refusal"]["code"])
+        wanted = params.get("captions") or []
+        if not isinstance(wanted, list):
+            raise InvalidParams("Parameter 'captions' must be a list.")
+        available = {(t["language"], t["kind"]): t for t in inspected["captions"]}
+        tracks = []
+        for item in wanted:
+            key = (item.get("language"), item.get("kind")) if isinstance(item, dict) else None
+            if key not in available:
+                raise InvalidParams("That caption track is not offered for this video.", data={"track": item})
+            tracks.append(available[key])
+        video = params.get("media", "video") != "audio"
+        meta = {
+            "kind": "youtube", **{k: inspected[k] for k in ("url", "video_id", "title", "channel", "channel_url",
+                                                           "duration", "upload_date", "license", "language",
+                                                           "chapters", "sponsor_chapters", "ads_note")},
+            "authorization": {"confirmed_at": utc_now(), "statement": AUTHORIZATION_STATEMENT},
+            "requested": {"media": "video" if video else "audio", "captions": [
+                {k: t[k] for k in ("language", "kind")} for t in tracks]},
+        }
+        title = (params.get("title") or inspected["title"] or target.video_id or "YouTube video").strip()[:300]
+        project = repo.create_url_project(self.db, target.url, title, meta, has_video=video)
+        job_options = {**options, "youtube": {"video": video, "captions": tracks}}
+        job = repo.create_job(self.db, project["id"], options["mode"], job_options, kind="youtube")
+        self.jobs.announce_new(job["id"])
+        project = repo.get_project(self.db, project["id"])
+        self.notify("project.updated", project)
+        return {"project": project, "job": job}
+
+    def captions_export(self, params: dict[str, Any]) -> dict[str, Any]:
+        """A published caption track as SRT or WebVTT, as published (it is not
+        the transcript)."""
+        project_id = _require(params, "project_id")
+        caption_id = _require(params, "caption_id", int)
+        fmt = params.get("format", "vtt")
+        if fmt not in ("srt", "vtt"):
+            raise InvalidParams("Captions can be exported as 'srt' or 'vtt'.")
+        track = next((t for t in repo.list_captions(self.db, project_id, include_cues=True) if t["id"] == caption_id),
+                     None)
+        if track is None:
+            raise NotFound("Caption track not found.", data={"caption_id": caption_id})
+        content = render_captions(track["cues"], fmt)
+        project = repo.get_project(self.db, project_id)
+        filename = suggested_filename(project, "txt").removesuffix(".txt") + f".{track['language']}.captions.{fmt}"
+        if params.get("path"):
+            return {"path": params["path"], "bytes": write_atomic(params["path"], content)}
+        return {"content": content, "suggested_filename": filename}
 
     # ------------------------------------------------------------------ transcription
 
