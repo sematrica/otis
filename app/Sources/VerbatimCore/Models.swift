@@ -488,6 +488,13 @@ public struct QueueUpdate: Codable, Hashable, Sendable {
     public var autoResume: Bool
     public var running: String?
     public var queued: [String]
+
+    public init(paused: Bool, autoResume: Bool, running: String?, queued: [String]) {
+        self.paused = paused
+        self.autoResume = autoResume
+        self.running = running
+        self.queued = queued
+    }
 }
 
 public struct TranscriptUpdated: Codable, Hashable, Sendable {
