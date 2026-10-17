@@ -73,6 +73,9 @@ jobs:
           --alignment-dir "$RUNNER_TEMP/vdata/models/alignment/en-conformer-small"
           --conversation "$RUNNER_TEMP/speaker-corpus/sample.wav" --ollama-model qwen2.5:0.5b
           && git status --short shared/protocol-fixtures
+          && echo "----BEGIN PROTOCOL FIXTURES (tar.gz, base64)----"
+          && tar -czf - -C shared protocol-fixtures | base64
+          && echo "----END PROTOCOL FIXTURES----"
       - uses: actions/upload-artifact@v4
         with:
           name: protocol-fixtures
