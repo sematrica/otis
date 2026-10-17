@@ -167,8 +167,8 @@ final class AppModel: ObservableObject {
                     alert = AppAlert(title: "Download failed", message: state.error ?? "The model could not be downloaded.")
                 }
             }
-        case .engineTerminated(let status):
-            engineState = .failed("The transcription engine stopped unexpectedly (status \(status)).")
+        case .engineTerminated(let status, let reason):
+            engineState = .failed(EngineClientError.terminated(status: status, reason: reason).localizedDescription)
             unexpectedExits += 1
             // Restart automatically a few times; jobs that were running are
             // marked interrupted by the engine and can be resumed.

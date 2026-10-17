@@ -6,7 +6,8 @@ public enum EngineClientError: Error, Sendable, Equatable, LocalizedError {
     case engine(code: String, message: String, data: JSONValue?)
     case notRunning
     case launchFailed(String)
-    case terminated(status: Int32)
+    /// `reason`: what the engine reported before it stopped, if anything.
+    case terminated(status: Int32, reason: String? = nil)
     case timedOut(method: String)
     case invalidResponse(String)
     case protocolMismatch(expected: Int, actual: Int)
@@ -16,7 +17,9 @@ public enum EngineClientError: Error, Sendable, Equatable, LocalizedError {
         case .engine(_, let message, _): return message
         case .notRunning: return "The transcription engine is not running."
         case .launchFailed(let reason): return "The transcription engine could not be started: \(reason)"
-        case .terminated(let status): return "The transcription engine stopped unexpectedly (status \(status))."
+        case .terminated(let status, let reason):
+            return reason.map { "The transcription engine stopped: \($0)" }
+                ?? "The transcription engine stopped unexpectedly (status \(status))."
         case .timedOut(let method): return "The transcription engine did not respond to \(method)."
         case .invalidResponse(let detail): return "Unexpected response from the transcription engine: \(detail)"
         case .protocolMismatch(let expected, let actual):
@@ -42,7 +45,7 @@ public enum EngineNotification: Sendable {
     case queueUpdated(QueueUpdate)
     case other(method: String)
     /// The engine process exited; the client must be started again.
-    case engineTerminated(status: Int32)
+    case engineTerminated(status: Int32, reason: String? = nil)
 }
 
 /// How to launch the engine.
@@ -74,6 +77,10 @@ public actor EngineClient {
     private var pending: [Int: CheckedContinuation<Data, Error>] = [:]
     private var nextID = 1
     private var isStopping = false
+    /// The engine's stderr log and its size when the engine was launched.
+    private var errorLog: (url: URL, offset: UInt64)?
+    /// How the last engine process ended (unless it was asked to stop).
+    private var lastExit: EngineClientError?
 
     private let encoder: JSONEncoder = {
         let encoder = JSONEncoder()
@@ -114,11 +121,12 @@ public actor EngineClient {
         process.standardInput = stdinPipe
         process.standardOutput = stdoutPipe
         if let logFile = configuration.logFile {
-            FileManager.default.createFile(atPath: logFile.path, contents: nil)
+            FileManager.default.createFile(atPath: logFile.path, contents: nil)  // a fresh log per launch
             let handle = try FileHandle(forWritingTo: logFile)
-            _ = try handle.seekToEnd()
+            errorLog = (logFile, try handle.seekToEnd())
             process.standardError = handle
         } else {
+            errorLog = nil
             process.standardError = FileHandle.nullDevice
         }
 
@@ -145,13 +153,19 @@ public actor EngineClient {
         self.process = process
         self.input = stdinPipe.fileHandleForWriting
         isStopping = false
+        lastExit = nil
         readerTask = Task { [weak self] in
             for await line in lines.stream {
                 await self?.handle(line: line)
             }
         }
 
-        let info = try await call("engine.info", as: EngineInfo.self, timeout: startupTimeout)
+        let info: EngineInfo
+        do {
+            info = try await call("engine.info", as: EngineInfo.self, timeout: startupTimeout)
+        } catch EngineClientError.notRunning {
+            throw lastExit ?? EngineClientError.notRunning  // it exited before the request was sent
+        }
         guard info.protocolVersion == supportedProtocolVersion else {
             await stop()
             throw EngineClientError.protocolMismatch(expected: supportedProtocolVersion, actual: info.protocolVersion)
@@ -279,12 +293,43 @@ public actor EngineClient {
         process = nil
         try? input?.close()
         input = nil
+        let reason = isStopping ? nil : exitReason()
+        lastExit = isStopping ? nil : .terminated(status: status, reason: reason)
         let waiting = pending
         pending.removeAll()
         for continuation in waiting.values {
-            continuation.resume(throwing: EngineClientError.terminated(status: status))
+            continuation.resume(throwing: EngineClientError.terminated(status: status, reason: reason))
         }
-        if notify { notificationSink.yield(.engineTerminated(status: status)) }
+        if notify { notificationSink.yield(.engineTerminated(status: status, reason: reason)) }
+    }
+
+    /// Why the engine stopped, from what it wrote to its error log since it was launched.
+    private func exitReason() -> String? {
+        guard let log = errorLog, let handle = try? FileHandle(forReadingFrom: log.url) else { return nil }
+        defer { try? handle.close() }
+        guard let end = try? handle.seekToEnd() else { return nil }
+        try? handle.seek(toOffset: max(log.offset, end > 65_536 ? end - 65_536 : 0))
+        guard let data = try? handle.readToEnd() else { return nil }
+        return Self.exitReason(fromLog: String(decoding: data, as: UTF8.self))
+    }
+
+    /// Prefix of the line the engine writes last when it cannot start.
+    public static let startupErrorPrefix = "verbatim-engine: cannot start: "
+
+    /// The engine's own startup error, or else the exception that ended the
+    /// Python process (a traceback at the very end of the log, whose last
+    /// line names it); nil when the log says neither.
+    public static func exitReason(fromLog text: String) -> String? {
+        let lines = text.split(whereSeparator: \.isNewline).map(String.init)
+            .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        if let line = lines.last(where: { $0.hasPrefix(startupErrorPrefix) }) {
+            let reason = line.dropFirst(startupErrorPrefix.count).trimmingCharacters(in: .whitespaces)
+            return reason.isEmpty ? nil : reason
+        }
+        guard let start = lines.lastIndex(where: { $0.hasPrefix("Traceback (most recent call last)") }),
+              let exception = lines[(start + 1)...].firstIndex(where: { !$0.hasPrefix(" ") }),
+              exception == lines.count - 1 else { return nil }
+        return lines[exception]
     }
 }
 

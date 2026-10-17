@@ -160,3 +160,19 @@ def test_shutdown_exits_cleanly(data_dir):
     process = EngineProcess(data_dir)
     process.result("engine.info")
     assert process.close() == 0
+
+
+def test_a_library_from_a_newer_version_is_refused_with_the_reason(data_dir):
+    import sqlite3
+
+    data_dir.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(data_dir / "verbatim.sqlite3") as conn:
+        conn.execute("PRAGMA user_version = 999")
+    finished = subprocess.run([sys.executable, "-m", "verbatim_engine", "serve", "--data-dir", str(data_dir)],
+                              input=b"", capture_output=True, timeout=60)
+    assert finished.returncode == 3 and finished.stdout == b""  # no protocol message
+    last = finished.stderr.decode().strip().splitlines()[-1]
+    assert last.startswith("verbatim-engine: cannot start: The library in ")
+    assert "newer version of Verbatim (database version 999" in last
+    with sqlite3.connect(data_dir / "verbatim.sqlite3") as conn:  # left as it was
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 999

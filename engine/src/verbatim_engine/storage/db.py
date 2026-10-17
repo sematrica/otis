@@ -13,6 +13,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterable, Iterator, Sequence
 
+from ..errors import EngineError
+
 SCHEMA_V1 = """
 CREATE TABLE projects (
     id               TEXT PRIMARY KEY,
@@ -327,6 +329,10 @@ MIGRATIONS: list[tuple[int, str, bool]] = [(1, SCHEMA_V1, False), (2, SCHEMA_V2,
 LATEST_VERSION = MIGRATIONS[-1][0]
 
 
+class DatabaseTooNew(EngineError):
+    code = "database_too_new"
+
+
 class Database:
     def __init__(self, path: Path | str):
         self.path = str(path)
@@ -343,9 +349,11 @@ class Database:
         with self._lock:
             current = self._conn.execute("PRAGMA user_version").fetchone()[0]
             if current > LATEST_VERSION:
-                raise RuntimeError(
-                    f"Database schema version {current} is newer than this engine supports ({LATEST_VERSION})."
-                )
+                raise DatabaseTooNew(
+                    f"The library in {Path(self.path).parent} was last opened by a newer version of Verbatim "
+                    f"(database version {current}; this version reads up to {LATEST_VERSION}). Open it with "
+                    "the newer version.",
+                    data={"schema_version": current, "supported": LATEST_VERSION})
             for version, sql, rebuilds in MIGRATIONS:
                 if version <= current:
                     continue

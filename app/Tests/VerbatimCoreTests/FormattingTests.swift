@@ -68,4 +68,33 @@ final class FormattingTests: XCTestCase {
         XCTAssertEqual(config.environment["PYTHONNOUSERSITE"], "1")
         XCTAssertNil(config.environment["PYTHONPATH"])
     }
+
+    func testWhyTheEngineStopped() {
+        let log = """
+        2026-10-17 09:00:01 serve[42] INFO verbatim_engine: starting
+        Traceback (most recent call last):
+          File "db.py", line 350, in migrate
+        verbatim_engine.storage.db.DatabaseTooNew: The library … newer version
+        verbatim-engine: cannot start: The library in /x was last opened by a newer version of Verbatim.
+        """
+        XCTAssertEqual(EngineClient.exitReason(fromLog: log),
+                       "The library in /x was last opened by a newer version of Verbatim.")
+        let crash = """
+        2026-10-17 09:00:01 serve[42] INFO verbatim_engine: starting
+        Traceback (most recent call last):
+          File "<frozen runpy>", line 198, in _run_module_as_main
+            ^^^^^^^^
+        ModuleNotFoundError: No module named 'yt_dlp'
+
+        """
+        XCTAssertEqual(EngineClient.exitReason(fromLog: crash), "ModuleNotFoundError: No module named 'yt_dlp'")
+        // a failure the engine handled earlier is not why it stopped
+        let handled = crash + "2026-10-17 09:00:05 serve[42] INFO verbatim_engine: engine stopped\n"
+        XCTAssertNil(EngineClient.exitReason(fromLog: handled))
+        XCTAssertNil(EngineClient.exitReason(fromLog: ""))
+        XCTAssertEqual(EngineClientError.terminated(status: 3, reason: "Disk full.").localizedDescription,
+                       "The transcription engine stopped: Disk full.")
+        XCTAssertEqual(EngineClientError.terminated(status: 9).localizedDescription,
+                       "The transcription engine stopped unexpectedly (status 9).")
+    }
 }

@@ -1,4 +1,5 @@
 import Foundation
+import SQLite3
 import XCTest
 @testable import VerbatimCore
 
@@ -150,6 +151,28 @@ final class EngineIntegrationTests: XCTestCase {
         let original = try await client.originalTranscript(projectId: project.id)
         XCTAssertEqual(original.speakers.map(\.label), ["Speaker 1", "Speaker 2"])
         await client.stop()
+    }
+
+    func testALibraryFromANewerVersionIsExplained() async throws {
+        guard let python = environment[EngineLocator.environmentKey] else {
+            throw XCTSkip("Set \(EngineLocator.environmentKey) to run engine integration tests")
+        }
+        let dataDir = FileManager.default.temporaryDirectory.appendingPathComponent("verbatim-tests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dataDir, withIntermediateDirectories: true)
+        var db: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(dataDir.appendingPathComponent("verbatim.sqlite3").path, &db), SQLITE_OK)
+        XCTAssertEqual(sqlite3_exec(db, "PRAGMA user_version = 999", nil, nil, nil), SQLITE_OK)
+        sqlite3_close(db)
+        let client = EngineClient()
+        do {
+            _ = try await client.start(EngineLocator.configuration(python: URL(fileURLWithPath: python), dataDirectory: dataDir))
+            XCTFail("expected the engine to refuse a library from a newer version")
+        } catch let error as EngineClientError {
+            guard case .terminated(let status, let reason) = error else { return XCTFail("\(error)") }
+            XCTAssertEqual(status, 3)
+            XCTAssertTrue(reason?.contains("newer version of Verbatim") ?? false, reason ?? "no reason")
+            XCTAssertTrue(error.localizedDescription.hasPrefix("The transcription engine stopped: The library in"))
+        }
     }
 
     func testEngineCrashIsReported() async throws {

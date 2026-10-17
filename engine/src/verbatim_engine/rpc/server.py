@@ -48,6 +48,11 @@ class ProtocolWriter:
         self.send({"method": method, "params": params})
 
 
+#: The engine's last stderr line when it cannot start; the app shows what follows.
+STARTUP_ERROR_PREFIX = "verbatim-engine: cannot start: "
+STARTUP_FAILED = 3
+
+
 def _claim_stdout() -> IO[str]:
     protocol_fd = os.dup(sys.stdout.fileno())
     os.dup2(sys.stderr.fileno(), sys.stdout.fileno())
@@ -97,9 +102,15 @@ def _method_of(line: str) -> str | None:
 def serve(data_dir: str | None = None, worker_command: list[str] | None = None) -> int:
     protocol_out = _claim_stdout()
     writer = ProtocolWriter(protocol_out)
-    paths = EnginePaths.create(data_dir)
-    service = EngineService(paths, writer.notify, worker_command)
-    service.start()
+    try:
+        paths = EnginePaths.create(data_dir)
+        service = EngineService(paths, writer.notify, worker_command)
+        service.start()
+    except Exception as exc:  # noqa: BLE001 - reported to the app, which shows it
+        log.exception("the engine could not start")
+        reason = exc.message if isinstance(exc, EngineError) else f"{type(exc).__name__}: {exc}"
+        print(STARTUP_ERROR_PREFIX + " ".join(reason.split()), file=sys.stderr, flush=True)
+        return STARTUP_FAILED
     methods = service.methods()
     log.info("engine serving (data dir %s)", paths.data_dir)
     # Requests run concurrently so a slow call (e.g. deleting a project with a
