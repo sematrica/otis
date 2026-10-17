@@ -11,6 +11,8 @@ struct SettingsView: View {
                 .tabItem { Label("Models", systemImage: "cpu") }
             EngineSettingsView()
                 .tabItem { Label("Engine", systemImage: "gearshape.2") }
+            AIVerificationSettings()
+                .tabItem { Label("AI Verification", systemImage: "sparkles") }
         }
         .padding(16)
         .navigationTitle("Settings")
@@ -213,5 +215,96 @@ private struct EngineSettingsView: View {
         parts.append("\(hw.performanceCores) performance cores")
         if let memory = hw.memoryBytes { parts.append("\(ByteSize.string(memory)) memory") }
         return parts.joined(separator: " · ")
+    }
+}
+
+/// Optional AI verification: which language model reviews transcripts. Off by
+/// default; Ollama runs on this computer, OpenAI is a cloud service that only
+/// receives transcript text after the user allows it here and confirms each review.
+private struct AIVerificationSettings: View {
+    @EnvironmentObject private var model: AppModel
+    @AppStorage(AISettings.providerKey) private var provider = "off"
+    @AppStorage(AISettings.ollamaURLKey) private var ollamaURL = ""
+    @AppStorage(AISettings.ollamaModelKey) private var ollamaModel = ""
+    @AppStorage(AISettings.openAIModelKey) private var openAIModel = ""
+    @AppStorage(AISettings.allowCloudKey) private var allowCloud = false
+    @State private var apiKey = ""
+    @State private var hasKey = false
+    @State private var models: [String] = []
+    @State private var status: String?
+    @State private var isLoading = false
+
+    var body: some View {
+        Form {
+            Picker("Provider", selection: $provider) {
+                Text("Off").tag("off")
+                Text("Ollama (on this computer)").tag("ollama")
+                Text("OpenAI (cloud service)").tag("openai")
+            }
+            .onChange(of: provider) { _ in models = []; status = nil }
+            if provider == "ollama" {
+                TextField("Ollama address", text: $ollamaURL, prompt: Text(AISettings.defaultOllamaURL))
+                modelRow(selection: $ollamaModel)
+            } else if provider == "openai" {
+                SecureField("API key", text: $apiKey, prompt: Text(hasKey ? "Saved in the Keychain" : "Paste your key"))
+                HStack {
+                    Button("Save Key in Keychain") {
+                        hasKey = KeychainStore.save(apiKey, account: AISettings.keychainAccount) && !apiKey.isEmpty
+                        apiKey = ""
+                    }
+                    .disabled(apiKey.trimmingCharacters(in: .whitespaces).isEmpty)
+                    Button("Remove Key", role: .destructive) {
+                        KeychainStore.delete(account: AISettings.keychainAccount)
+                        hasKey = false
+                    }
+                    .disabled(!hasKey)
+                }
+                Toggle("Allow sending transcript text to OpenAI", isOn: $allowCloud)
+                modelRow(selection: $openAIModel)
+            }
+            Section {
+                Text("The model reads transcript text only, never audio, and only suggests: passages to check, "
+                     + "punctuation, inconsistent spellings and passages to re-check against the audio. Nothing changes "
+                     + "until you accept a suggestion, and every accepted change can be undone. Before text is sent off "
+                     + "this computer, you are asked each time.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .formStyle(.grouped)
+        .onAppear { hasKey = KeychainStore.read(account: AISettings.keychainAccount) != nil }
+    }
+
+    @ViewBuilder
+    private func modelRow(selection: Binding<String>) -> some View {
+        HStack {
+            if models.isEmpty {
+                TextField("Model", text: selection, prompt: Text("Load the list or type a name"))
+            } else {
+                Picker("Model", selection: selection) {
+                    ForEach(models, id: \.self) { Text($0).tag($0) }
+                }
+            }
+            Button(isLoading ? "Loading…" : "Load Models") { Task { await loadModels() } }
+                .disabled(isLoading || (provider == "openai" && !hasKey))
+        }
+        if let status {
+            Text(status).font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private func loadModels() async {
+        isLoading = true
+        defer { isLoading = false }
+        let key = provider == "openai" ? KeychainStore.read(account: AISettings.keychainAccount) : nil
+        do {
+            let result = try await model.client.llmModels(
+                provider: provider, baseURL: provider == "ollama" ? AISettings.ollamaURL : nil, apiKey: key)
+            models = result.models
+            status = result.models.isEmpty ? "No models found at \(result.endpoint)." : "\(result.models.count) model(s) at \(result.endpoint)."
+        } catch {
+            models = []
+            status = error.localizedDescription
+        }
     }
 }

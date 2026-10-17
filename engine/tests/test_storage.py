@@ -140,7 +140,16 @@ def test_resolve_custom_model_folder(env, tmp_path):
     assert resolved.decode.beam_size == 1 and resolved.load.compute_type == "int8"
     maximum = resolve(normalize_options({"backend": "faster-whisper", "model_path": str(folder), "mode": "maximum"}), manager)
     assert maximum.decode.beam_size == 5 and maximum.load.compute_type == "float32"
-    assert any("not implemented yet" in w for w in maximum.warnings)
+    # Maximum Accuracy re-checks doubtful passages; Fast does not, unless asked to
+    assert maximum.recheck and not resolved.recheck
+    assert "Maximum Accuracy" in resolved.recheck_skip_reason
+    forced = resolve(normalize_options({"backend": "faster-whisper", "model_path": str(folder), "mode": "fast",
+                                        "recheck": True}), manager)
+    assert forced.recheck
+    off = resolve(normalize_options({"backend": "faster-whisper", "model_path": str(folder), "mode": "maximum",
+                                     "recheck": False}), manager)
+    assert not off.recheck and "turned off" in off.recheck_skip_reason
+    assert maximum.describe()["recheck"]["enabled"] is True
 
 
 def test_modes_cover_spec():

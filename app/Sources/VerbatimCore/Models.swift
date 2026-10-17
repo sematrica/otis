@@ -211,10 +211,14 @@ public struct JobOptions: Codable, Hashable, Sendable {
     public var speakers: SpeakerBounds?
     public var align: Tristate?
     public var alignmentModel: String?
+    /// Re-transcribe doubtful passages and choose by acoustic evidence
+    /// ("auto": on in Maximum Accuracy mode).
+    public var recheck: Tristate?
 
     public init(mode: String = "balanced", backend: String = "auto", modelId: String? = nil, modelPath: String? = nil,
                 language: String? = nil, chunkSeconds: Double? = nil, vad: Bool? = nil, diarize: Tristate? = nil,
-                speakers: SpeakerBounds? = nil, align: Tristate? = nil, alignmentModel: String? = nil) {
+                speakers: SpeakerBounds? = nil, align: Tristate? = nil, alignmentModel: String? = nil,
+                recheck: Tristate? = nil) {
         self.mode = mode
         self.backend = backend
         self.modelId = modelId
@@ -226,6 +230,7 @@ public struct JobOptions: Codable, Hashable, Sendable {
         self.speakers = speakers
         self.align = align
         self.alignmentModel = alignmentModel
+        self.recheck = recheck
     }
 }
 
@@ -335,6 +340,9 @@ public struct Segment: Codable, Hashable, Sendable, Identifiable {
     public var speakerEdited: Bool?
     public var flags: [JSONValue]
     public var words: [Word]?
+    /// "high", "medium" or "low": the engine's review priority (most severe open
+    /// flag); nil when nothing asks for a look or the user marked it reviewed.
+    public var reviewPriority: String?
 
     /// Flag types recorded by the engine (e.g. "chunk_boundary").
     public var flagTypes: [String] { flags.compactMap { $0["type"]?.stringValue } }
@@ -345,6 +353,10 @@ public struct Segment: Codable, Hashable, Sendable, Identifiable {
 
     public var isTextEdited: Bool { textEdited ?? false }
     public var isSpeakerEdited: Bool { speakerEdited ?? false }
+    /// Something here asks for a look (high or medium priority).
+    public var needsReview: Bool { reviewPriority == "high" || reviewPriority == "medium" }
+    /// The user marked this passage as checked.
+    public var isReviewed: Bool { flagTypes.contains("reviewed") }
 }
 
 public struct Speaker: Codable, Hashable, Sendable, Identifiable {
@@ -540,4 +552,78 @@ public enum ISO8601 {
         formatter.formatOptions = [.withInternetDateTime]
         return formatter.date(from: value)
     }
+}
+
+// MARK: - AI verification (Stage 3)
+
+/// One AI review of a transcript: which provider and model, where it ran,
+/// and what came of it. Only transcript text is ever sent, never audio.
+public struct LLMRun: Codable, Hashable, Sendable, Identifiable {
+    public var id: Int
+    public var projectId: String
+    public var provider: String
+    public var model: String
+    public var endpoint: String
+    /// The endpoint is not on this computer.
+    public var remote: Bool
+    /// "running", "completed", "failed" or "cancelled".
+    public var status: String
+    public var error: String?
+    public var transcriptRevision: Int
+    public var segmentsSent: Int
+    public var requests: Int
+    public var startedAt: String
+    public var finishedAt: String?
+    /// Suggestion counts by status.
+    public var suggestions: [String: Int]?
+    /// Every request and response (only when asked for).
+    public var exchanges: [LLMExchange]?
+
+    public var isRunning: Bool { status == "running" }
+}
+
+public struct LLMExchange: Codable, Hashable, Sendable {
+    public var request: JSONValue
+    public var response: String?
+    public var seconds: Double
+    public var error: String?
+}
+
+public struct LLMRunsResult: Codable, Sendable { public var runs: [LLMRun] }
+
+public struct LLMModelsResult: Codable, Sendable {
+    public var provider: String
+    public var endpoint: String
+    public var remote: Bool
+    public var models: [String]
+}
+
+/// A suggestion from an AI review. Never applied until the user accepts it.
+public struct Suggestion: Codable, Hashable, Sendable, Identifiable {
+    public var id: Int
+    public var projectId: String
+    public var runId: Int
+    public var segmentId: Int?
+    /// "suspicious", "punctuation", "terminology" or "retranscribe".
+    public var kind: String
+    public var originalText: String
+    public var suggestedText: String?
+    public var reason: String?
+    /// "pending", "accepted", "rejected", "invalid" (failed validation) or "outdated".
+    public var status: String
+    /// Why validation rejected it.
+    public var validation: String?
+    public var createdAt: String
+    public var decidedAt: String?
+}
+
+public struct SuggestionsResult: Codable, Sendable { public var suggestions: [Suggestion] }
+
+public struct SuggestionAcceptResult: Codable, Sendable {
+    public var suggestion: Suggestion
+    public var summary: String?
+    public var changed: Bool
+    public var transcript: Transcript?
+    /// The acoustic re-check started for a "re-transcribe" suggestion.
+    public var job: Job?
 }

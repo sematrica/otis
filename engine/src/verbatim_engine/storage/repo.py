@@ -13,6 +13,7 @@ from ..audio.chunking import Chunk
 from ..errors import NotFound
 from ..media.probe import MediaInfo
 from ..transcript.model import TSegment
+from ..verify.review import review_priority
 from ..util.ids import new_id, parse_utc, utc_now
 from .db import Database
 
@@ -29,9 +30,17 @@ STAGES: list[tuple[str, str]] = [
     ("transcribe", "Transcribing"),
     ("diarize", "Identifying speakers"),
     ("align", "Aligning words"),
+    ("quality", "Checking quality"),
+    ("retranscribe", "Re-checking doubtful passages"),
+    ("validate", "Validating transcript"),
     ("finalize", "Saving transcript"),
 ]
 STAGE_ORDINALS = {name: i for i, (name, _label) in enumerate(STAGES)}
+#: Stages each kind of job goes through.
+JOB_KIND_STAGES = {
+    "transcribe": [name for name, _label in STAGES],
+    "recheck": ["prepare", "retranscribe", "finalize"],
+}
 STAGE_LABELS = dict(STAGES)
 
 #: ETA is shown only after this much measured work in the current attempt.
@@ -149,21 +158,21 @@ def delete_project(db: Database, project_id: str) -> list[str]:
 # --------------------------------------------------------------------------- jobs
 
 
-def create_job(db: Database, project_id: str, mode: str, options: dict[str, Any]) -> dict[str, Any]:
+def create_job(db: Database, project_id: str, mode: str, options: dict[str, Any], kind: str = "transcribe") -> dict[str, Any]:
     job_id = new_id()
     now = utc_now()
     with db.transaction() as conn:
         if conn.execute("SELECT 1 FROM projects WHERE id = ?", (project_id,)).fetchone() is None:
             raise NotFound("Project not found.", data={"project_id": project_id})
         conn.execute(
-            """INSERT INTO jobs (id, project_id, status, mode, options_json, created_at, updated_at)
-               VALUES (?, ?, 'queued', ?, ?, ?, ?)""",
-            (job_id, project_id, mode, json.dumps(options), now, now),
+            """INSERT INTO jobs (id, project_id, status, mode, options_json, created_at, updated_at, kind)
+               VALUES (?, ?, 'queued', ?, ?, ?, ?, ?)""",
+            (job_id, project_id, mode, json.dumps(options), now, now, kind),
         )
-        for ordinal, (stage, _label) in enumerate(STAGES):
+        for stage in JOB_KIND_STAGES[kind]:
             conn.execute(
                 "INSERT INTO job_stages (job_id, stage, ordinal, status) VALUES (?, ?, ?, 'pending')",
-                (job_id, stage, ordinal),
+                (job_id, stage, STAGE_ORDINALS[stage]),
             )
         set_project_status(conn, project_id, "queued", job_id=job_id)
     return get_job(db, job_id)
@@ -556,7 +565,8 @@ def _segment_dict(r) -> dict[str, Any]:
         "speaker_confidence": r["speaker_confidence"],
         "text_edited": bool(r["text_edited"]),
         "speaker_edited": bool(r["speaker_edited"]),
-        "flags": json.loads(r["flags_json"]),
+        "flags": (flags := json.loads(r["flags_json"])),
+        "review_priority": review_priority(flags),
     }
 
 
@@ -672,3 +682,22 @@ def set_setting(db: Database, key: str, value: Any) -> None:
         "INSERT INTO settings (key, value_json) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json",
         (key, json.dumps(value)),
     )
+
+
+def load_segments(db: Database, project_id: str) -> list[tuple[int, Any, bool]]:
+    """The current transcript as engine segments: ``[(segment_id, TSegment,
+    text_edited)]`` in time order (words keep their database speaker ids)."""
+    from ..transcript.model import TSegment, TWord
+
+    out = []
+    for r in db.query("SELECT * FROM segments WHERE project_id = ? ORDER BY start, id", (project_id,)):
+        words = [
+            TWord(w["start"], w["end"], w["text"], w["probability"], w["timing_source"], w["whisper_start"],
+                  w["whisper_end"], w["alignment_score"], w["speaker_id"])
+            for w in db.query("SELECT * FROM words WHERE segment_id = ? ORDER BY ordinal", (r["id"],))
+        ]
+        seg = TSegment(r["start"], r["end"], r["text"], words, r["language"], r["avg_logprob"], r["no_speech_prob"],
+                       r["compression_ratio"], r["temperature"], r["chunk_index"], json.loads(r["flags_json"]),
+                       r["speaker_id"], r["speaker_confidence"])
+        out.append((r["id"], seg, bool(r["text_edited"])))
+    return out

@@ -47,9 +47,14 @@ from ..models.manager import ModelManager
 from ..paths import EnginePaths
 from ..storage import repo
 from ..storage.db import Database
+from ..transcript.edit import TranscriptEditor
 from ..transcript.build import apply_alignment, speakers_in_order
 from ..transcript.model import TSegment
 from ..util.hardware import performance_core_count
+from ..verify.quality import SpeechMap, analyse, build_speech_map
+from ..verify.recheck import Recheck, summary_text
+from ..verify.retranscribe import load_decodes
+from ..verify.validate import validate
 from .options import CHUNK_PAD_SECONDS, ResolvedJob, resolve
 
 log = logging.getLogger(__name__)
@@ -120,7 +125,10 @@ class Worker:
         project = repo.get_project(self.db, job["project_id"])
         options = json.loads(job["options_json"])
         try:
-            self._run(project, options)
+            if job["kind"] == "recheck":
+                self._run_recheck(project, options)
+            else:
+                self._run(project, options)
         except Cancelled as exc:
             repo.finish_job(self.db, self.job_id, "cancelled", error_code=exc.code, error_message=exc.message)
             self._changed(status="cancelled")
@@ -230,6 +238,73 @@ class Worker:
         finally:
             reader.close()
 
+    # ------------------------------------------------------------------ on-demand re-check
+
+    def _run_recheck(self, project: dict[str, Any], options: dict[str, Any]) -> None:
+        """Re-check passages the user picked (passes 6-7) on the current
+        transcript, with the audio of the transcription that produced it, and
+        save the outcome as one undoable correction."""
+        request = options.get("recheck_request") or {}
+        source = project["source"]
+        self._start("prepare")
+        if not check_unchanged(source["path"], source["size_bytes"], source["mtime_ns"]):
+            raise SourceChanged(
+                "The source file was moved, deleted or modified after it was imported. Import it again.",
+                data={"path": source["path"]},
+            )
+        wav_path = self.paths.job_dir(str(request.get("source_job", ""))) / "audio.wav"
+        if not wav_path.is_file():
+            raise EngineError("The audio extracted for this transcript is no longer available. Transcribe the "
+                              "recording again to re-check passages.", code="audio_unavailable")
+        resolved = resolve(options, self.models)
+        rows = repo.load_segments(self.db, project["id"])
+        ids = [sid for sid, _seg, _edited in rows]
+        segments = [seg for _sid, seg, _edited in rows]
+        wanted = set(request.get("segment_ids") or [])
+        indices = {i for i, sid in enumerate(ids) if sid in wanted}
+        protected = {i for i, (_sid, _seg, edited) in enumerate(rows) if edited}
+        languages = Counter(seg.language for seg in segments if seg.language)
+        language = languages.most_common(1)[0][0] if languages else None
+        self._finish("prepare", detail=f"{len(indices)} passage(s) to re-check")
+
+        reader = WavReader(wav_path)
+        try:
+            recheck = Recheck(segments, language, resolved, reader.duration, indices=indices, protected=protected)
+            cache_dir = self.paths.job_dir(self.job_id)
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            cache_path = cache_dir / "recheck.jsonl"
+            done = sum(1 for d in recheck.decodes if d[3] in load_decodes(cache_path))
+            self._start("retranscribe", unit="decodes", total=len(recheck.decodes) or None, done=done,
+                        detail=f"{len(recheck.targets)} passage(s)")
+            recheck.decode(reader, cache_path,
+                           progress=lambda d, total: self._progress("retranscribe", d, total, force=True),
+                           check_cancel=self._check_cancel)
+            speech = build_speech_map(reader, None, spans=[(w.start - 2.5, w.end + 2.5) for w in recheck.windows],
+                                      should_cancel=self._poll_cancel)
+            result = recheck.finish(reader, reanalyse=lambda changed: analyse(changed, speech, missing=False))
+            self._finish("retranscribe", detail=summary_text(result.counts, result.info["acoustic_model"] is not None))
+        finally:
+            reader.close()
+
+        self._check_cancel()
+        self._start("finalize")
+        touched = {t.segment for t in recheck.targets} | {i for i, _reason in recheck.skipped}
+        updates: dict[int, dict[str, Any]] = {}
+        for i in sorted(touched):
+            seg = result.replaced.get(i, segments[i])
+            words = None
+            if i in result.replaced:
+                words = [{"start": w.start, "end": w.end, "text": w.text, "probability": w.probability,
+                          "timing_source": w.timing_source, "whisper_start": w.whisper_start,
+                          "whisper_end": w.whisper_end, "alignment_score": w.alignment_score,
+                          "original_text": w.text} for w in seg.words]
+            updates[ids[i]] = {"text": seg.text, "start": seg.start, "end": seg.end, "flags": seg.flags, "words": words}
+        n = len(touched)
+        summary = f"Re-check {n} passage{'s' if n != 1 else ''}: {summary_text(result.counts, True)}"
+        TranscriptEditor(self.db).apply_recheck(project["id"], self.job_id, updates, summary)
+        repo.set_effective(self.db, self.job_id, {"recheck": {"enabled": True, **result.info, **result.counts}})
+        self._finish("finalize", detail=summary)
+
     def _poll_cancel(self) -> bool:
         # called frequently from decoding loops; DB check is cheap but throttle anyway
         now = time.monotonic()
@@ -335,12 +410,31 @@ class Worker:
         # 7. word alignment -------------------------------------------------------
         self._align(reader, segments, language, resolved, effective)
         repo.set_effective(self.db, self.job_id, effective)
+        if diarization is not None:  # a speaker for every word (needed by the quality checks)
+            segments = assign_speakers(segments, diarization)
 
-        # 8. finalize ---------------------------------------------------------------
+        # 8. quality analysis (pass 5) ------------------------------------------------
+        speech = self._quality(reader, segments, diarization, effective)
+        repo.set_effective(self.db, self.job_id, effective)
+
+        # 9. targeted re-transcription, compared by acoustic evidence (passes 6-7) ----
+        segments = self._recheck(reader, segments, language, resolved, diarization, speech, effective)
+        repo.set_effective(self.db, self.job_id, effective)
+
+        # 10. validation (pass 8) -----------------------------------------------------
+        self._check_cancel()
+        self._start("validate")
+        segments, validation = validate(segments, speech, reader.duration)
+        effective["validation"] = validation
+        repo.set_effective(self.db, self.job_id, effective)
+        detail = f"{validation['needs_review']} passage(s) to review"
+        if validation["timing_fixes"]:
+            detail += f"; {validation['timing_fixes']} timestamp(s) corrected"
+        self._finish("validate", detail=detail)
+
+        # 11. finalize --------------------------------------------------------------
         self._check_cancel()
         self._start("finalize")
-        if diarization is not None:
-            segments = assign_speakers(segments, diarization)
         speakers = speakers_in_order(segments) if diarization is not None else []
         if diarization is not None:
             effective["diarization"]["speakers_in_transcript"] = len(speakers)
@@ -415,6 +509,60 @@ class Worker:
             detail += " (reused from an earlier attempt)"
         self._finish("diarize", detail=detail)
         return result
+
+    # ------------------------------------------------------------------ quality (pass 5)
+
+    def _quality(self, reader: WavReader, segments: list[TSegment], diarization: DiarizationResult | None,
+                 effective: dict[str, Any]) -> SpeechMap:
+        self._check_cancel()
+        duration = reader.duration
+        self._start("quality", unit="seconds", total=duration, done=0.0)
+        speech = build_speech_map(
+            reader, diarization,
+            progress=lambda done, total: self._progress("quality", done, total),
+            should_cancel=self._poll_cancel,
+        )
+        counts = analyse(segments, speech)
+        effective["quality"] = {
+            "speech_detectors": ["silero-vad"] + (["diarization"] if diarization is not None else []),
+            "flags": counts,
+        }
+        labels = {"low_confidence": "unclear", "possible_hallucination": "possible hallucination(s)",
+                  "missing_speech": "untranscribed speech", "repeated_words": "repetition(s)"}
+        found = [f"{counts[k]} {v}" for k, v in labels.items() if counts.get(k)]
+        self._finish("quality", detail="; ".join(found) or "No doubtful passages found.")
+        return speech
+
+    # ------------------------------------------------------------------ re-check (passes 6-7)
+
+    def _recheck(self, reader: WavReader, segments: list[TSegment], language: str | None, resolved: ResolvedJob,
+                 diarization: DiarizationResult | None, speech: SpeechMap, effective: dict[str, Any]) -> list[TSegment]:
+        if not resolved.recheck:
+            effective["recheck"] = {"enabled": False, "reason": resolved.recheck_skip_reason}
+            self._skip("retranscribe", resolved.recheck_skip_reason)
+            return segments
+        self._check_cancel()
+        recheck = Recheck(segments, language, resolved, reader.duration)
+        if not recheck.targets:
+            effective["recheck"] = {"enabled": True, "targets": 0}
+            self._start("retranscribe")
+            self._finish("retranscribe", detail="No doubtful passages to re-check.")
+            return segments
+        cache_path = self.paths.job_dir(self.job_id) / "recheck.jsonl"
+        done = sum(1 for d in recheck.decodes if d[3] in load_decodes(cache_path))
+        self._start("retranscribe", unit="decodes", total=len(recheck.decodes), done=done,
+                    detail=f"{len(recheck.targets)} passage(s) in {len(recheck.windows)} window(s)")
+        recheck.decode(reader, cache_path,
+                       progress=lambda d, total: self._progress("retranscribe", d, total, force=True),
+                       check_cancel=self._check_cancel)
+        result = recheck.finish(
+            reader,
+            assign=(lambda seg: assign_speakers([seg], diarization)) if diarization is not None else None,
+            reanalyse=lambda changed: analyse(changed, speech, missing=False),
+        )
+        effective["recheck"] = {"enabled": True, **result.info, **result.counts}
+        self._finish("retranscribe", detail=summary_text(result.counts, result.info["acoustic_model"] is not None))
+        return result.segments
 
     # ------------------------------------------------------------------ alignment
 

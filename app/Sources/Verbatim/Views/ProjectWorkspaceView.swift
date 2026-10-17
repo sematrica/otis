@@ -15,6 +15,7 @@ struct ProjectWorkspaceView: View {
     @State private var newTitle = ""
     @State private var confirmDelete = false
     @State private var transcribingAgain = false
+    @State private var reviewingWithAI = false
 
     init(projectID: String) {
         self.projectID = projectID
@@ -44,6 +45,12 @@ struct ProjectWorkspaceView: View {
                 }
                 .sheet(isPresented: $transcribingAgain) {
                     TranscribeAgainSheet(project: project, hasCorrections: workspace.history.editCount > 0)
+                }
+                .sheet(isPresented: $reviewingWithAI) {
+                    AIReviewSheet(projectID: projectID, app: model, workspace: workspace) { time in
+                        player.play(from: time)
+                    }
+                    .environmentObject(model)
                 }
         } else {
             EmptyState(title: "Project not found", systemImage: "questionmark.folder", message: nil)
@@ -89,6 +96,26 @@ struct ProjectWorkspaceView: View {
             }
             .disabled(model.latestJob(for: project.id)?.status.isActive == true)
             .help("Run a new transcription (replaces the current transcript and corrections when it completes)")
+
+            Menu {
+                Button("Show Passages Needing Review (\(workspace.reviewCount))") { workspace.filter = .review }
+                    .disabled(workspace.reviewCount == 0)
+                Button("Re-check Passages Needing Review") {
+                    Task { await workspace.recheck(workspace.segments.filter(\.needsReview)) }
+                }
+                .disabled(workspace.reviewCount == 0 || model.latestJob(for: project.id)?.status.isActive == true)
+                .help("Decode these passages again and keep the wording the audio supports best")
+                Button("Mark Shown Passages as Reviewed") {
+                    Task { await workspace.setReviewed(workspace.visibleSegments.filter { !$0.isReviewed }, true) }
+                }
+                .disabled(workspace.visibleSegments.allSatisfy(\.isReviewed))
+                Divider()
+                Button("Review with AI…") { reviewingWithAI = true }
+                    .disabled(project.segmentCount == 0)
+            } label: {
+                Label("Review", systemImage: "checklist")
+            }
+            .help("Review doubtful passages")
 
             Menu {
                 Button("Rename…") { newTitle = project.title; isRenaming = true }

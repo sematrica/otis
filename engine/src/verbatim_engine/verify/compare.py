@@ -9,7 +9,8 @@ a candidate cannot win by quietly dropping a word at the boundary.
 Decisions are deliberately conservative:
 
 * the first-pass wording is kept unless another candidate beats it by
-  :data:`DECISION_MARGIN` (log-likelihood, nats);
+  :data:`DECISION_MARGIN` (log-likelihood, nats), plus :data:`DELETION_COST`
+  for every word the candidate has fewer than the first pass;
 * wordings that differ but are within the margin are kept as *unresolved
   alternatives* - agreement or disagreement between decodes is not taken as
   evidence either way;
@@ -38,6 +39,12 @@ from ..alignment.score import PassageScorer
 from ..asr.merge import normalize_token
 
 DECISION_MARGIN = 3.0
+#: Extra lead required per word a candidate has fewer than the first pass.
+#: CTC scoring favours dropping words where the acoustic model is unsure
+#: (far-field, overlapping speech): on the AMI meeting excerpts, wordings that
+#: won by dropping words left reference speech uncovered (worse DER). Each
+#: dropped word must be paid for with a clear margin of its own.
+DELETION_COST = 3.0
 
 
 @dataclass
@@ -95,7 +102,10 @@ def compare(
     scores = [CandidateScore(c.source, " ".join(c.words), distinct[c.key]) for c in candidates]
 
     first = distinct[candidates[0].key]
-    others = [i for i, c in enumerate(candidates) if c.key != candidates[0].key and distinct[c.key] is not None]
+    # An empty alternative never replaces words: "nothing was said" is judged
+    # separately (no_acoustic_support), and words are never removed.
+    others = [i for i, c in enumerate(candidates)
+              if c.key != candidates[0].key and distinct[c.key] is not None and (c.key or not candidates[0].key)]
     # one representative per distinct wording, best first
     seen: set[tuple[str, ...]] = set()
     ranked: list[int] = []
@@ -112,7 +122,8 @@ def compare(
     if ranked:
         best = ranked[0]
         lead = distinct[candidates[best].key] - first  # type: ignore[operator]
-        if lead >= DECISION_MARGIN:
+        dropped = max(0, len(candidates[0].key) - len(candidates[best].key))
+        if lead >= DECISION_MARGIN + DELETION_COST * dropped:
             close = [i for i in ranked[1:] if distinct[candidates[best].key] - distinct[candidates[i].key] < DECISION_MARGIN]
             return Comparison("replace", best, round(lead, 3), scores, empty, close)
         close = [i for i in ranked if first - distinct[candidates[i].key] < DECISION_MARGIN]  # type: ignore[operator]

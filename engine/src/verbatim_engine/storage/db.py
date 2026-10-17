@@ -221,9 +221,49 @@ CREATE INDEX edits_by_project ON edits(project_id, id);
 ALTER TABLE projects ADD COLUMN transcript_revision INTEGER NOT NULL DEFAULT 0;
 """
 
+SCHEMA_V3 = """
+-- Stage 3: AI verification runs and their suggestions. (jobs.kind exists since
+-- version 1; Stage 3 adds the 'recheck' kind.)
+
+CREATE TABLE llm_runs (
+    id                  INTEGER PRIMARY KEY,
+    project_id          TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    provider            TEXT NOT NULL,
+    model               TEXT NOT NULL,
+    endpoint            TEXT NOT NULL,
+    cloud               INTEGER NOT NULL,
+    status              TEXT NOT NULL CHECK (status IN ('running','completed','failed','cancelled')),
+    error               TEXT,
+    transcript_revision INTEGER NOT NULL,
+    segments_sent       INTEGER NOT NULL DEFAULT 0,
+    requests            INTEGER NOT NULL DEFAULT 0,
+    exchanges_json      TEXT NOT NULL DEFAULT '[]',
+    started_at          TEXT NOT NULL,
+    finished_at         TEXT
+);
+CREATE INDEX llm_runs_by_project ON llm_runs(project_id, id);
+
+CREATE TABLE suggestions (
+    id             INTEGER PRIMARY KEY,
+    project_id     TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    run_id         INTEGER NOT NULL REFERENCES llm_runs(id) ON DELETE CASCADE,
+    segment_id     INTEGER REFERENCES segments(id) ON DELETE SET NULL,
+    kind           TEXT NOT NULL CHECK (kind IN ('suspicious','punctuation','terminology','retranscribe')),
+    original_text  TEXT NOT NULL,
+    suggested_text TEXT,
+    reason         TEXT,
+    status         TEXT NOT NULL DEFAULT 'pending'
+                   CHECK (status IN ('pending','accepted','rejected','invalid','outdated')),
+    validation     TEXT,
+    created_at     TEXT NOT NULL,
+    decided_at     TEXT
+);
+CREATE INDEX suggestions_by_project ON suggestions(project_id, status);
+"""
+
 #: (version, script, rebuilds_tables). Table rebuilds run with foreign-key
 #: enforcement off, as SQLite requires, and are checked afterwards.
-MIGRATIONS: list[tuple[int, str, bool]] = [(1, SCHEMA_V1, False), (2, SCHEMA_V2, True)]
+MIGRATIONS: list[tuple[int, str, bool]] = [(1, SCHEMA_V1, False), (2, SCHEMA_V2, True), (3, SCHEMA_V3, False)]
 LATEST_VERSION = MIGRATIONS[-1][0]
 
 

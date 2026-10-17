@@ -150,3 +150,214 @@ def test_unspellable_first_pass_cannot_be_judged():
     scorer = _FixedScorer({"≈ b": None, "x b": -5.0, "": -50.0})
     result = compare(scorer, None, _cands("≈ b", "x b"))
     assert result.decision == "unscorable" and result.chosen == 0
+
+
+# ----------------------------------------------------------------------------- quality analysis (pass 5)
+
+from verbatim_engine.transcript.model import TSegment, TWord  # noqa: E402
+from verbatim_engine.verify.quality import STEP, SpeechMap, analyse, repetitions  # noqa: E402
+from verbatim_engine.verify.review import review_priority  # noqa: E402
+
+
+def _seg(start, words, *, avg=-0.2, prob=0.9, no_speech=0.01, temperature=0.0, compression=1.2, flags=None):
+    step = 0.4
+    tw = [TWord(start + i * step, start + i * step + 0.3, " " + w, prob) for i, w in enumerate(words)]
+    end = tw[-1].end if tw else start + 1.0
+    return TSegment(start, end, " ".join(words), tw, "en", avg, no_speech, compression, temperature, 0, list(flags or []))
+
+
+def _speech(duration, *intervals, diarization=None):
+    vad = np.zeros(int(np.ceil(duration / STEP)) + 1, dtype=bool)
+    for a, b in intervals:
+        vad[int(a / STEP): int(b / STEP)] = True
+    return SpeechMap(duration, vad, diarization)
+
+
+def _types(seg):
+    return [f["type"] for f in seg.flags]
+
+
+def test_repetitions_separate_disfluencies_from_loops():
+    assert repetitions("i i think so".split()) == [{"text": "i", "count": 2, "loop": False}]
+    assert repetitions("you know you know you know you know right".split())[0] == {
+        "text": "you know", "count": 4, "loop": True}
+    assert repetitions("thank you thank you".split()) == [{"text": "thank you", "count": 2, "loop": False}]
+    assert repetitions("a b c d".split()) == []
+
+
+def test_clean_segment_with_speech_gets_no_flags():
+    seg = _seg(1.0, "this is perfectly clear speech".split())
+    assert analyse([seg], _speech(5.0, (0.9, 3.2))) == {}
+    assert seg.flags == [] and review_priority(seg.flags) is None
+
+
+def test_text_over_silence_is_a_possible_hallucination():
+    seg = _seg(10.0, "thank you for watching".split())
+    analyse([seg], _speech(15.0, (0.0, 2.0)))
+    flag = next(f for f in seg.flags if f["type"] == "possible_hallucination")
+    assert flag["severity"] == "high"
+    assert set(flag["reasons"]) >= {"no_speech_detected", "known_phrase"}
+
+
+def test_known_phrase_over_real_speech_is_only_a_weak_signal():
+    seg = _seg(0.0, "thank you for watching everyone".split())
+    analyse([seg], _speech(3.0, (0.0, 3.0)))
+    flag = next(f for f in seg.flags if f["type"] == "possible_hallucination")
+    assert flag["reasons"] == ["known_phrase"] and flag["severity"] == "low"
+
+
+def test_unclear_speech_is_flagged_with_its_reasons():
+    seg = _seg(0.0, "maybe he said something here".split(), avg=-1.4, prob=0.3, temperature=0.4)
+    analyse([seg], _speech(3.0, (0.0, 3.0)))
+    flag = next(f for f in seg.flags if f["type"] == "low_confidence")
+    assert set(flag["reasons"]) == {"low_average_probability", "many_uncertain_words", "decoder_fallback"}
+    assert flag["severity"] == "high" and review_priority(seg.flags) == "high"
+
+
+def test_loops_and_disfluencies():
+    loop = _seg(0.0, "and then and then and then and then".split())
+    stutter = _seg(5.0, "i i think so".split())
+    analyse([loop, stutter], _speech(8.0, (0.0, 3.2), (5.0, 6.6)))
+    assert "possible_hallucination" in _types(loop)
+    assert "repetition_loop" in next(f for f in loop.flags if f["type"] == "possible_hallucination")["reasons"]
+    assert _types(stutter) == ["repeated_words"] and review_priority(stutter.flags) == "low"
+
+
+def test_untranscribed_speech_is_reported_once_with_its_detectors():
+    first = _seg(0.0, "hello there".split())
+    second = _seg(8.0, "goodbye now".split())
+    diar = np.zeros(int(np.ceil(10.0 / STEP)) + 1, dtype=bool)
+    diar[int(3.0 / STEP): int(6.0 / STEP)] = True
+    analyse([first, second], _speech(10.0, (0.0, 0.8), (3.0, 6.0), (8.0, 8.8), diarization=diar))
+    gap = next(f for f in first.flags if f["type"] == "missing_speech")
+    assert gap["start"] == pytest.approx(3.0, abs=0.05) and gap["end"] == pytest.approx(6.0, abs=0.05)
+    assert gap["detectors"] == ["vad", "diarization"] and gap["severity"] == "high"
+    assert "missing_speech" not in _types(second)
+
+
+def test_review_priority_uses_the_most_severe_flag():
+    flags = [{"type": "split_at_speaker_change"}, {"type": "speaker_change_uncertain"}]
+    assert review_priority(flags) == "low"
+    assert review_priority(flags + [{"type": "overlapping_speech"}]) == "medium"
+    assert review_priority(flags + [{"type": "marked_uncertain", "by": "user"}]) == "high"
+    assert review_priority([{"type": "chunk_boundary"}]) is None
+
+
+def test_an_empty_decode_never_replaces_words():
+    scorer = _FixedScorer({"a b c": -40.0, "a c": -10.0})
+    result = compare(scorer, None, _cands("b", ""), left=["a"], right=["c"])
+    assert result.chosen == 0 and result.decision == "no_acoustic_support"
+
+
+# ----------------------------------------------------------------------------- AI review: rules (no model)
+
+from verbatim_engine.errors import InvalidParams  # noqa: E402
+from verbatim_engine.llm.providers import OpenAIProvider, is_local, make_provider  # noqa: E402
+from verbatim_engine.llm.review import batches, collect, validate  # noqa: E402
+
+
+@pytest.mark.parametrize("url, local", [
+    ("http://127.0.0.1:11434", True), ("http://localhost:11434", True), ("http://[::1]:8080", True),
+    ("https://api.openai.com/v1", False), ("http://192.168.1.20:11434", False), ("https://example.org", False),
+])
+def test_endpoint_locality(url, local):
+    assert is_local(url) is local
+
+
+def test_remote_endpoints_need_https_and_a_key():
+    with pytest.raises(InvalidParams):
+        make_provider("ollama", "m", base_url="http://192.168.1.20:11434")  # plain http off this computer
+    with pytest.raises(InvalidParams):
+        make_provider("ollama", "m", base_url="ftp://localhost")
+    with pytest.raises(InvalidParams):
+        OpenAIProvider("some-model", api_key=None)  # api.openai.com without a key
+    assert make_provider("ollama", "m").remote is False
+    assert make_provider("openai", "m", api_key="k").remote is True
+    assert make_provider("openai", "m", base_url="http://127.0.0.1:11434/v1").remote is False
+    with pytest.raises(InvalidParams):
+        make_provider("other", "m")
+
+
+SEGMENTS = {
+    1: {"id": 1, "text": " and so my fellow americans ask not", "speaker_id": None},
+    2: {"id": 2, "text": " we deployed it on cooper netties last week", "speaker_id": None},
+}
+
+
+def test_punctuation_suggestions_may_not_change_words():
+    ok = validate({"segment_id": 1, "kind": "punctuation", "text": "And so, my fellow Americans, ask not", "term": "",
+                   "reason": "commas"}, SEGMENTS)
+    assert ok["status"] == "pending" and ok["suggested_text"].startswith("And so,")
+    changed = validate({"segment_id": 1, "kind": "punctuation", "text": "And so, my fellow citizens, ask not",
+                        "term": "", "reason": ""}, SEGMENTS)
+    assert changed["status"] == "invalid" and "changes words" in changed["validation"]
+    assert validate({"segment_id": 1, "kind": "punctuation", "text": "and so my fellow americans ask not",
+                     "term": "", "reason": ""}, SEGMENTS) is None  # no change
+
+
+def test_terminology_must_name_a_spelling_in_the_passage():
+    ok = validate({"segment_id": 2, "kind": "terminology", "text": "Kubernetes", "term": "cooper netties",
+                   "reason": "spelled Kubernetes elsewhere"}, SEGMENTS)
+    assert ok["status"] == "pending" and ok["suggested_text"] == "we deployed it on Kubernetes last week"
+    missing = validate({"segment_id": 2, "kind": "terminology", "text": "Docker", "term": "dokker", "reason": ""},
+                       SEGMENTS)
+    assert missing["status"] == "invalid"
+
+
+def test_suggestions_for_unsent_passages_or_unknown_kinds_are_invalid():
+    assert validate({"segment_id": 99, "kind": "suspicious", "text": "", "term": "", "reason": "x"},
+                    SEGMENTS)["status"] == "invalid"
+    assert validate({"segment_id": 1, "kind": "rewrite", "text": "", "term": "", "reason": "x"},
+                    SEGMENTS)["status"] == "invalid"
+    flagged = validate({"segment_id": 1, "kind": "retranscribe", "text": "", "term": "", "reason": ""}, SEGMENTS)
+    assert flagged["status"] == "pending" and flagged["suggested_text"] is None and flagged["reason"]
+
+
+def test_collect_dedupes_and_survives_malformed_answers():
+    batch = list(SEGMENTS.values())
+    assert collect({"oops": 1}, batch)[0]["status"] == "invalid"
+    item = {"segment_id": 1, "kind": "suspicious", "text": "", "term": "", "reason": "odd"}
+    assert len(collect({"suggestions": [item, item, "junk"]}, batch)) == 1
+
+
+def test_batches_respect_the_word_budget():
+    many = [{"id": i, "text": " word" * 300, "speaker_id": None} for i in range(7)]
+    out = batches(many, {})
+    assert [len(b) for b in out] == [3, 3, 1]
+
+
+# ----------------------------------------------------------------------------- re-check safeguards
+
+from verbatim_engine.asr.base import Word  # noqa: E402
+from verbatim_engine.verify.compare import DELETION_COST  # noqa: E402
+from verbatim_engine.verify.retranscribe import Target, extract, select_targets  # noqa: E402
+
+
+def test_dropping_words_needs_a_lead_per_dropped_word():
+    first, shorter = "a b c d", "a d"  # the candidate drops two words
+    weak = compare(_FixedScorer({first: -20.0, shorter: -20.0 + DECISION_MARGIN + 1, "": -90.0}), None,
+                   _cands(first, shorter))
+    assert weak.decision == "unresolved" and weak.chosen == 0
+    strong = compare(_FixedScorer({first: -20.0, shorter: -20.0 + DECISION_MARGIN + 2 * DELETION_COST, "": -90.0}),
+                     None, _cands(first, shorter))
+    assert strong.decision == "replace" and strong.chosen == 1
+
+
+def test_a_decoded_word_stands_for_one_passage_only():
+    context = [TWord(0.0, 0.4, " we"), TWord(0.5, 0.9, " stay"), TWord(1.0, 1.4, " here")]
+    decoded = [Word(0.0, 0.4, " we"), Word(0.5, 0.9, " stay"), Word(1.0, 1.4, " near")]
+    claimed: set[int] = set()
+    first = extract(context, Target(0.9, 1.5, 0), decoded, claimed)
+    second = extract(context, Target(0.95, 1.5, 1), decoded, claimed)
+    assert [w.text for w in first] == [" near"] and second == []
+
+
+def test_overlapping_speech_is_not_re_worded():
+    a = _seg(0.0, "one two three four five".split(), avg=-1.5, prob=0.2)
+    b = _seg(1.0, "six seven eight".split(), avg=-1.5, prob=0.2)  # overlaps a by about a second
+    c = _seg(10.0, "nine ten eleven".split(), avg=-1.5, prob=0.2)
+    analyse([a, b, c], None)
+    skipped: list = []
+    targets = select_targets([a, b, c], skipped=skipped)
+    assert [t.segment for t in targets] == [2]
+    assert [i for i, _ in skipped] == [0, 1] and skipped[0][1] == "overlapping speech"

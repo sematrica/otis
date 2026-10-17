@@ -14,6 +14,8 @@ from ..asr.registry import describe_backends
 from ..errors import InvalidParams, NotFound
 from ..export import FORMATS, render, suggested_filename, write_atomic
 from ..jobs.manager import JobManager
+from ..llm.providers import make_provider
+from ..llm.runs import ReviewManager, decide, get_run, get_suggestion, list_runs, list_suggestions
 from ..jobs.options import modes_payload, normalize_options, resolve
 from ..media.probe import probe
 from ..models.catalog import get_spec
@@ -24,6 +26,7 @@ from ..storage import repo
 from ..storage.db import Database
 from ..transcript.edit import TranscriptEditor
 from ..util.hardware import describe as describe_hardware
+from ..util.timecode import format_clock
 
 log = logging.getLogger(__name__)
 
@@ -55,12 +58,14 @@ class EngineService:
         self.jobs = JobManager(self.db, paths, notify, worker_command)
         self.downloads = DownloadManager(paths, notify, worker_command)
         self.editor = TranscriptEditor(self.db)
+        self.reviews = ReviewManager(self.db, notify)
         self.shutdown_requested = False
 
     def start(self) -> None:
         self.jobs.start()
 
     def shutdown(self) -> None:
+        self.reviews.shutdown()
         self.downloads.shutdown()
         self.jobs.shutdown()
         self.db.close()
@@ -101,6 +106,14 @@ class EngineService:
                 pid, _require(p, "segment_id", int), _require(p, "text"))),
             "transcript.markUncertain": lambda p: self._edit(p, lambda pid: self.editor.mark_uncertain(
                 pid, _require(p, "segment_id", int), bool(p.get("uncertain", True)), p.get("note"))),
+            "transcript.deleteSegment": lambda p: self._edit(p, lambda pid: self.editor.delete_segment(
+                pid, _require(p, "segment_id", int))),
+            "transcript.chooseWording": lambda p: self._edit(p, lambda pid: self.editor.choose_wording(
+                pid, _require(p, "segment_id", int), _require(p, "source"))),
+            "transcript.markReviewed": lambda p: self._edit(p, lambda pid: self.editor.mark_reviewed(
+                pid, _int_list(p, "segment_ids"), bool(p.get("reviewed", True)))),
+            "transcript.recheck": lambda p: self.jobs.submit_recheck(_require(p, "project_id"),
+                                                                     _int_list(p, "segment_ids")),
             "transcript.undo": lambda p: self._edit(p, self.editor.undo),
             "transcript.redo": lambda p: self._edit(p, self.editor.redo),
             "export.formats": lambda _p: {"formats": list(FORMATS)},
@@ -110,6 +123,15 @@ class EngineService:
             "models.download": lambda p: self.downloads.start(_require(p, "model_id")),
             "models.cancelDownload": self.models_cancel_download,
             "models.delete": self.models_delete,
+            "llm.models": self.llm_models,
+            "llm.review": self.llm_review,
+            "llm.runs": lambda p: {"runs": list_runs(self.db, _require(p, "project_id"))},
+            "llm.run": lambda p: get_run(self.db, _require(p, "run_id", int), bool(p.get("exchanges"))),
+            "llm.cancel": lambda p: self.reviews.cancel(_require(p, "run_id", int)),
+            "suggestions.list": lambda p: {"suggestions": list_suggestions(
+                self.db, _require(p, "project_id"), p.get("statuses"))},
+            "suggestions.accept": self.suggestions_accept,
+            "suggestions.reject": lambda p: decide(self.db, _require(p, "suggestion_id", int), "rejected"),
             "settings.get": self.settings_get,
             "settings.set": self.settings_set,
         }
@@ -211,6 +233,54 @@ class EngineService:
             self.notify("transcript.updated", {"project_id": project_id, "revision": transcript["revision"],
                                                "summary": summary})
         return {"summary": summary, "changed": summary is not None, "transcript": transcript}
+
+    # ------------------------------------------------------------------ AI verification
+
+    @staticmethod
+    def _provider(params: dict[str, Any], require_model: bool = True):
+        return make_provider(_require(params, "provider"), params.get("model"), base_url=params.get("base_url"),
+                             api_key=params.get("api_key"), require_model=require_model)
+
+    def llm_models(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Models offered by a provider (nothing from any transcript is sent)."""
+        provider = self._provider(params, require_model=False)
+        return {"provider": provider.name, "endpoint": provider.base_url, "remote": provider.remote,
+                "models": provider.list_models()}
+
+    def llm_review(self, params: dict[str, Any]) -> dict[str, Any]:
+        provider = self._provider(params)
+        return self.reviews.start(_require(params, "project_id"), provider,
+                                  allow_remote=params.get("allow_remote") is True)
+
+    def suggestions_accept(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Apply one AI suggestion through the editor (undoable), or start an
+        acoustic re-check for a re-transcribe suggestion."""
+        suggestion = get_suggestion(self.db, _require(params, "suggestion_id", int))
+        if suggestion["status"] != "pending":
+            raise InvalidParams(f"This suggestion is already {suggestion['status']}.")
+        project_id, segment_id = suggestion["project_id"], suggestion["segment_id"]
+        row = self.db.query_one("SELECT text, start FROM segments WHERE id = ? AND project_id = ?",
+                                (segment_id, project_id)) if segment_id is not None else None
+        if row is None or row["text"].strip() != suggestion["original_text"].strip():
+            outdated = decide(self.db, suggestion["id"], "outdated")
+            return {"suggestion": outdated, "summary": None, "changed": False, "job": None}
+        run = get_run(self.db, suggestion["run_id"])
+        source = f"{run['provider']} / {run['model']}"
+        kind, clock = suggestion["kind"], format_clock(row["start"])
+        job = None
+        if kind in ("punctuation", "terminology"):
+            result = self._edit({"project_id": project_id}, lambda pid: self.editor.edit_text(
+                pid, segment_id, suggestion["suggested_text"], kind="ai_suggestion",
+                summary=f"Apply AI {kind} suggestion at {clock} ({source})"))
+        elif kind == "suspicious":
+            note = f"AI review ({source}): {suggestion['reason']}"
+            result = self._edit({"project_id": project_id}, lambda pid: self.editor.mark_uncertain(
+                pid, segment_id, True, note))
+        else:  # retranscribe: the audio decides, not the language model
+            job = self.jobs.submit_recheck(project_id, [segment_id])
+            result = {"summary": None, "changed": False}
+        accepted = decide(self.db, suggestion["id"], "accepted")
+        return {**result, "suggestion": accepted, "job": job}
 
     # ------------------------------------------------------------------ export
 

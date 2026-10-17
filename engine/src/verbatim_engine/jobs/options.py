@@ -33,6 +33,8 @@ class ModePreset:
     limitations: str = ""
     #: Forced word alignment by default (Whisper's own word timings otherwise).
     align: bool = True
+    #: Re-transcribe doubtful passages and choose by acoustic evidence (passes 6-7).
+    recheck: bool = False
 
 
 MODES: dict[str, ModePreset] = {
@@ -40,7 +42,7 @@ MODES: dict[str, ModePreset] = {
         id="fast",
         label="Fast",
         description="Whisper Small with greedy decoding and speaker identification; word times from "
-        "Whisper. Quickest; less accurate on difficult audio.",
+        "Whisper; quality checks flag doubtful passages. Quickest; less accurate on difficult audio.",
         family="small",
         beam_size=1,
         best_of=1,
@@ -51,7 +53,7 @@ MODES: dict[str, ModePreset] = {
         id="balanced",
         label="Balanced",
         description="Whisper Large-v3 Turbo with beam search where the backend supports it, speaker "
-        "identification and forced word alignment.",
+        "identification, forced word alignment and quality checks.",
         family="large-v3-turbo",
         beam_size=5,
         best_of=5,
@@ -61,13 +63,15 @@ MODES: dict[str, ModePreset] = {
         id="maximum",
         label="Maximum Accuracy",
         description="Whisper Large-v3 with beam search where supported (float32 on the CPU backend), "
-        "speaker identification and forced word alignment.",
+        "speaker identification, forced word alignment, quality checks, and re-transcription of doubtful "
+        "passages with the wording chosen by acoustic evidence. Slowest.",
         family="large-v3",
         beam_size=5,
         best_of=5,
         cpu_compute_type="float32",
-        limitations="Multi-pass verification and targeted re-transcription are not implemented yet; "
-        "this mode currently runs a single high-accuracy pass.",
+        limitations="Wordings are compared acoustically only in languages an installed word-alignment model "
+        "supports; elsewhere, differing wordings are listed for review instead.",
+        recheck=True,
     ),
 }
 
@@ -120,6 +124,7 @@ def normalize_options(raw: dict[str, Any] | None) -> dict[str, Any]:
         if spec.kind != "alignment":
             raise InvalidParams(f"'{alignment_model}' is not an alignment model.")
     speakers = _speaker_bounds(raw.pop("speakers", None))
+    recheck = _tristate(raw.pop("recheck", "auto"), "recheck")
     if raw:
         raise InvalidParams(f"Unknown option(s): {', '.join(sorted(raw))}.")
     return {
@@ -134,6 +139,7 @@ def normalize_options(raw: dict[str, Any] | None) -> dict[str, Any]:
         "speakers": speakers,
         "align": align,
         "alignment_model": alignment_model,
+        "recheck": recheck,
     }
 
 
@@ -179,6 +185,12 @@ class ResolvedJob:
     #: the language is known), most preferred first.
     alignment_candidates: list[tuple[ModelSpec, Path]] = field(default_factory=list)
     alignment_skip_reason: str | None = None
+    #: Targeted re-transcription (passes 6-7).
+    recheck: bool = False
+    recheck_skip_reason: str | None = None
+    #: Installed acoustic models for comparing wordings (independent of the
+    #: word-alignment setting), most preferred first.
+    scoring_candidates: list[tuple[ModelSpec, Path]] = field(default_factory=list)
 
     def describe(self) -> dict[str, Any]:
         return {
@@ -197,13 +209,27 @@ class ResolvedJob:
                 "candidates": [spec.id for spec, _ in self.alignment_candidates],
                 "skip_reason": self.alignment_skip_reason,
             },
+            "recheck": {
+                "enabled": self.recheck,
+                "skip_reason": self.recheck_skip_reason,
+                "acoustic_models": [spec.id for spec, _ in self.scoring_candidates],
+            },
         }
 
     def alignment_model_for(self, language: str | None) -> tuple[ModelSpec, Path] | None:
-        for spec, path in self.alignment_candidates:
-            if not spec.languages or language in spec.languages:
-                return spec, path
+        return _first_for(self.alignment_candidates, language)
+
+    def scoring_model_for(self, language: str | None) -> tuple[ModelSpec, Path] | None:
+        return _first_for(self.scoring_candidates, language)
+
+
+def _first_for(candidates: list[tuple[ModelSpec, Path]], language: str | None) -> tuple[ModelSpec, Path] | None:
+    if language is None:
         return None
+    for spec, path in candidates:
+        if not spec.languages or language in spec.languages:
+            return spec, path
+    return None
 
 
 def _candidate_specs(family: str, backend: str) -> list[ModelSpec]:
@@ -268,6 +294,13 @@ def resolve(options: dict[str, Any], models: ModelManager) -> ResolvedJob:
 
     diarization_dir, diarization_skip = _resolve_diarization(options, models)
     alignment, alignment_skip = _resolve_alignment(options, models)
+    recheck_setting = options.get("recheck", "auto")
+    recheck = mode.recheck if recheck_setting == "auto" else bool(recheck_setting)
+    recheck_skip = None
+    if not recheck:
+        recheck_skip = ("Re-checking doubtful passages runs in Maximum Accuracy mode." if recheck_setting == "auto"
+                        else "Re-checking doubtful passages was turned off for this job.")
+    scoring = _installed_alignment(models, options.get("language")) if recheck else []
 
     decode = DecodeOptions(
         language=options["language"],
@@ -291,6 +324,9 @@ def resolve(options: dict[str, Any], models: ModelManager) -> ResolvedJob:
         speaker_bounds=dict(options.get("speakers") or {}),
         alignment_candidates=alignment,
         alignment_skip_reason=alignment_skip,
+        recheck=recheck,
+        recheck_skip_reason=recheck_skip,
+        scoring_candidates=scoring,
     )
 
 
@@ -325,14 +361,10 @@ def _resolve_alignment(options: dict[str, Any], models: ModelManager) -> tuple[l
         spec = get_spec(options["alignment_model"])
         path = models.require_installed(spec)
         return [(spec, path)], None
-    installed = {spec.id: spec for spec in models.installed("alignment")}
-    order = [installed[i] for i in ALIGNMENT_PREFERENCE if i in installed]
-    order += [s for i, s in installed.items() if i not in ALIGNMENT_PREFERENCE]
     language = options.get("language")
-    if language is not None:
-        order = [s for s in order if not s.languages or language in s.languages]
+    order = _installed_alignment(models, language)
     if order:
-        return [(s, Path(models.status(s)["path"])) for s in order], None
+        return order, None
     if setting is True:
         suggestion = get_spec("alignment/en-conformer-small" if language in (None, "en") else "alignment/mms-300m")
         raise ModelNotInstalled(
@@ -341,3 +373,12 @@ def _resolve_alignment(options: dict[str, Any], models: ModelManager) -> tuple[l
                   "approx_download_bytes": suggestion.approx_download_bytes},
         )
     return [], "No word-alignment model is installed; word times come from Whisper."
+
+
+def _installed_alignment(models: ModelManager, language: str | None) -> list[tuple[ModelSpec, Path]]:
+    installed = {spec.id: spec for spec in models.installed("alignment")}
+    order = [installed[i] for i in ALIGNMENT_PREFERENCE if i in installed]
+    order += [s for i, s in installed.items() if i not in ALIGNMENT_PREFERENCE]
+    if language is not None:
+        order = [s for s in order if not s.languages or language in s.languages]
+    return [(s, Path(models.status(s)["path"])) for s in order]

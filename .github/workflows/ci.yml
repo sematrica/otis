@@ -20,7 +20,7 @@ jobs:
   engine-linux:
     name: Engine (Linux, real Whisper Small)
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -49,6 +49,12 @@ jobs:
           du -sh "$RUNNER_TEMP"/vdata/models/*/*
       - name: Fetch the speaker corpus (pinned, checksummed)
         run: uv run --project engine python engine/scripts/fetch_speaker_corpus.py "$RUNNER_TEMP/speaker-corpus"
+      - name: Install Ollama and a small open model (real AI-review tests; local only)
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          ollama --version
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:11434/api/tags > /dev/null && break; sleep 1; done
+          ollama pull qwen2.5:0.5b
       - name: Real-model end-to-end tests
         env:
           VERBATIM_TEST_MODEL_DIR: ${{ runner.temp }}/vdata/models/faster-whisper/small
@@ -57,6 +63,7 @@ jobs:
           VERBATIM_TEST_MMS_DIR: ${{ runner.temp }}/vdata/models/alignment/mms-300m
           VERBATIM_TEST_SPEAKER_CORPUS: ${{ runner.temp }}/speaker-corpus
           VERBATIM_TEST_REPORT: ${{ runner.temp }}/accuracy-linux.json
+          VERBATIM_TEST_OLLAMA_MODEL: qwen2.5:0.5b
         run: uv run --project engine pytest engine/tests -m model -q -s -rs
       - name: Word-timestamp benchmark (synthetic speech with known word times)
         working-directory: engine
@@ -66,6 +73,15 @@ jobs:
           --aligner "nemo:$RUNNER_TEMP/vdata/models/alignment/en-conformer-medium"
           --aligner "mms:$RUNNER_TEMP/vdata/models/alignment/mms-300m"
           --voice en-us --voice en-us+f3 --voice en-gb-scotland --json "$RUNNER_TEMP/word-timing-linux.json"
+      - name: Accuracy benchmark (Stage 3 corpus; one pass vs re-checking; Whisper Small)
+        run: >-
+          uv run --project engine python engine/scripts/benchmark_accuracy.py
+          --whisper "$RUNNER_TEMP/vdata/models/faster-whisper/small"
+          --diarization "$RUNNER_TEMP/vdata/models/diarization/pyannote-wespeaker"
+          --alignment "$RUNNER_TEMP/vdata/models/alignment/en-conformer-small"
+          --speaker-corpus "$RUNNER_TEMP/speaker-corpus" --cache "$RUNNER_TEMP/benchmark" --interrupted
+          --json "$RUNNER_TEMP/benchmark-linux.json" --markdown "$RUNNER_TEMP/benchmark-linux.md"
+          && cat "$RUNNER_TEMP/benchmark-linux.md"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -73,6 +89,8 @@ jobs:
           path: |
             ${{ runner.temp }}/accuracy-linux.json
             ${{ runner.temp }}/word-timing-linux.json
+            ${{ runner.temp }}/benchmark-linux.json
+            ${{ runner.temp }}/benchmark-linux.md
           if-no-files-found: ignore
 
   macos:

@@ -115,6 +115,30 @@ class JobManager:
         self._wake.set()
         return job
 
+    def submit_recheck(self, project_id: str, segment_ids: list[int]) -> dict[str, Any]:
+        """Re-check chosen passages of the current transcript (passes 6-7), with
+        the settings and extracted audio of the job that produced it."""
+        active = repo.list_jobs(self.db, statuses=["queued", "running"], project_id=project_id, limit=1)
+        if active:
+            raise InvalidJobState("This project already has a job in progress.", data={"job_id": active[0]["id"]})
+        source = next((j for j in repo.list_jobs(self.db, statuses=["completed"], project_id=project_id)
+                       if j["kind"] == "transcribe"), None)
+        if source is None:
+            raise InvalidJobState("Transcribe the recording before re-checking passages.")
+        if not (self.paths.job_dir(source["id"]) / "audio.wav").is_file():
+            raise InvalidJobState("The audio extracted for this transcript is no longer available. Transcribe the "
+                                  "recording again to re-check passages.")
+        known = {r["id"] for r in self.db.query("SELECT id FROM segments WHERE project_id = ?", (project_id,))}
+        wanted = sorted(set(segment_ids))
+        if not wanted or any(sid not in known for sid in wanted):
+            raise NotFound("Segment not found in this project.", data={"segment_ids": wanted})
+        options = {**source["options"], "recheck": True,
+                   "recheck_request": {"segment_ids": wanted, "source_job": source["id"]}}
+        job = repo.create_job(self.db, project_id, options["mode"], options, kind="recheck")
+        self._announce(job["id"])
+        self._wake.set()
+        return job
+
     def cancel(self, job_id: str) -> dict[str, Any]:
         job = repo.get_job(self.db, job_id)
         if job["status"] == "queued":

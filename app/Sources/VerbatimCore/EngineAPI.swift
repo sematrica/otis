@@ -53,6 +53,28 @@ public struct MarkUncertainParams: Encodable, Sendable {
     public let note: String?
 }
 
+public struct SegmentParams: Encodable, Sendable { public let projectId: String; public let segmentId: Int }
+public struct ChooseWordingParams: Encodable, Sendable { public let projectId: String; public let segmentId: Int; public let source: String }
+public struct MarkReviewedParams: Encodable, Sendable { public let projectId: String; public let segmentIds: [Int]; public let reviewed: Bool }
+public struct SegmentsParams: Encodable, Sendable { public let projectId: String; public let segmentIds: [Int] }
+public struct LLMProviderParams: Encodable, Sendable {
+    public let provider: String
+    public let model: String?
+    public let baseUrl: String?
+    public let apiKey: String?
+}
+public struct LLMReviewParams: Encodable, Sendable {
+    public let projectId: String
+    public let provider: String
+    public let model: String
+    public let baseUrl: String?
+    public let apiKey: String?
+    public let allowRemote: Bool
+}
+public struct RunIDParams: Encodable, Sendable { public let runId: Int; public let exchanges: Bool }
+public struct SuggestionIDParams: Encodable, Sendable { public let suggestionId: Int }
+public struct SuggestionsParams: Encodable, Sendable { public let projectId: String; public let statuses: [String]? }
+
 public struct ExportOptions: Codable, Hashable, Sendable {
     public var timestamps: Bool
     public var header: Bool
@@ -185,6 +207,66 @@ public extension EngineClient {
 
     func redo(projectId: String) async throws -> EditResult {
         try await edit("transcript.redo", ProjectIDParams(projectId: projectId))
+    }
+
+    // MARK: Stage 3: review and re-check
+
+    func deleteSegment(projectId: String, segmentId: Int) async throws -> EditResult {
+        try await edit("transcript.deleteSegment", SegmentParams(projectId: projectId, segmentId: segmentId))
+    }
+
+    /// Use a wording recorded by re-checking ("first_pass" or a candidate's source).
+    func chooseWording(projectId: String, segmentId: Int, source: String) async throws -> EditResult {
+        try await edit("transcript.chooseWording", ChooseWordingParams(projectId: projectId, segmentId: segmentId, source: source))
+    }
+
+    func markReviewed(projectId: String, segmentIds: [Int], reviewed: Bool) async throws -> EditResult {
+        try await edit("transcript.markReviewed", MarkReviewedParams(projectId: projectId, segmentIds: segmentIds, reviewed: reviewed))
+    }
+
+    /// Re-transcribe passages and choose their wording by acoustic evidence (a job).
+    func recheck(projectId: String, segmentIds: [Int]) async throws -> Job {
+        try await call("transcript.recheck", params: SegmentsParams(projectId: projectId, segmentIds: segmentIds), as: Job.self)
+    }
+
+    // MARK: Stage 3: AI verification
+
+    func llmModels(provider: String, baseURL: String?, apiKey: String?) async throws -> LLMModelsResult {
+        try await call("llm.models", params: LLMProviderParams(provider: provider, model: nil, baseUrl: baseURL, apiKey: apiKey),
+                       as: LLMModelsResult.self, timeout: .seconds(60))
+    }
+
+    func llmReview(projectId: String, provider: String, model: String, baseURL: String?, apiKey: String?,
+                   allowRemote: Bool) async throws -> LLMRun {
+        try await call("llm.review", params: LLMReviewParams(projectId: projectId, provider: provider, model: model,
+                                                             baseUrl: baseURL, apiKey: apiKey, allowRemote: allowRemote),
+                       as: LLMRun.self)
+    }
+
+    func llmRuns(projectId: String) async throws -> [LLMRun] {
+        try await call("llm.runs", params: ProjectIDParams(projectId: projectId), as: LLMRunsResult.self).runs
+    }
+
+    func llmRun(id: Int, exchanges: Bool = false) async throws -> LLMRun {
+        try await call("llm.run", params: RunIDParams(runId: id, exchanges: exchanges), as: LLMRun.self)
+    }
+
+    func cancelLLMRun(id: Int) async throws -> LLMRun {
+        try await call("llm.cancel", params: RunIDParams(runId: id, exchanges: false), as: LLMRun.self)
+    }
+
+    func suggestions(projectId: String, statuses: [String]? = nil) async throws -> [Suggestion] {
+        try await call("suggestions.list", params: SuggestionsParams(projectId: projectId, statuses: statuses),
+                       as: SuggestionsResult.self).suggestions
+    }
+
+    func acceptSuggestion(id: Int) async throws -> SuggestionAcceptResult {
+        try await call("suggestions.accept", params: SuggestionIDParams(suggestionId: id), as: SuggestionAcceptResult.self,
+                       timeout: .seconds(120))
+    }
+
+    func rejectSuggestion(id: Int) async throws -> Suggestion {
+        try await call("suggestions.reject", params: SuggestionIDParams(suggestionId: id), as: Suggestion.self)
     }
 
     private func edit<Params: Encodable & Sendable>(_ method: String, _ params: Params) async throws -> EditResult {

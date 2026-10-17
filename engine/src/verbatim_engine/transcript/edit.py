@@ -30,6 +30,8 @@ from ..util.timecode import format_clock
 
 MAX_NAME_LENGTH = 100
 MAX_TEXT_LENGTH = 20_000
+#: Flags that record alternative wordings found by re-checking.
+WORDING_FLAGS = ("retranscribed", "alternatives", "recovered_speech")
 
 _SPEAKER_COLUMNS = ("id", "project_id", "label", "name", "origin", "cluster_index", "color_index", "merged_into", "created_at")
 _SEGMENT_COLUMNS = (
@@ -227,7 +229,8 @@ class TranscriptEditor:
             summary = f"Merge {len(ids)} segments at {format_clock(rows[0]['start'])}"
             return self._record(conn, project_id, "merge_segments", summary, set(), set(ids), mutate)
 
-    def edit_text(self, project_id: str, segment_id: int, text: str) -> str | None:
+    def edit_text(self, project_id: str, segment_id: int, text: str, *, kind: str = "edit_text",
+                  summary: str | None = None) -> str | None:
         if not isinstance(text, str) or not text.strip():
             raise InvalidParams("The text cannot be empty.")
         if len(text) > MAX_TEXT_LENGTH:
@@ -252,8 +255,8 @@ class TranscriptEditor:
                     (new_text, int(new_text.strip() != row["original_text"].strip()), segment_id),
                 )
 
-            summary = f"Edit text at {format_clock(row['start'])}"
-            return self._record(conn, project_id, "edit_text", summary, set(), {segment_id}, mutate)
+            summary = summary or f"Edit text at {format_clock(row['start'])}"
+            return self._record(conn, project_id, kind, summary, set(), {segment_id}, mutate)
 
     def mark_uncertain(self, project_id: str, segment_id: int, uncertain: bool, note: str | None = None) -> str | None:
         with self.db.transaction() as conn:
@@ -271,6 +274,120 @@ class TranscriptEditor:
 
             summary = f"{'Mark' if uncertain else 'Unmark'} passage at {format_clock(row['start'])} as uncertain"
             return self._record(conn, project_id, "mark_uncertain", summary, set(), {segment_id}, mutate)
+
+    def delete_segment(self, project_id: str, segment_id: int) -> str:
+        """Remove a passage (for example, text with no acoustic support). Undoable."""
+        with self.db.transaction() as conn:
+            row = self._segment(conn, project_id, segment_id)
+
+            def mutate(c):
+                c.execute("DELETE FROM segments WHERE id = ?", (segment_id,))
+
+            summary = f"Remove passage at {format_clock(row['start'])}"
+            return self._record(conn, project_id, "delete_segment", summary, set(), {segment_id}, mutate)
+
+    def choose_wording(self, project_id: str, segment_id: int, source: str) -> str | None:
+        """Use a wording recorded by re-checking: ``first_pass`` (the text
+        before re-transcription) or a candidate's ``source``."""
+        with self.db.transaction() as conn:
+            row = self._segment(conn, project_id, segment_id)
+            flags = json.loads(row["flags_json"])
+            text = None
+            for flag in flags:
+                if flag.get("type") not in WORDING_FLAGS:
+                    continue
+                if source == "first_pass" and flag.get("first_pass") is not None:
+                    text = flag["first_pass"]
+                for cand in flag.get("candidates", []):
+                    if cand.get("source") == source and text is None:
+                        text = cand.get("text")
+            if text is None:
+                raise InvalidParams(f"This passage has no '{source}' wording.", data={"source": source})
+            text = " ".join(text.split())
+            if not text:
+                raise InvalidParams("That wording is empty. Remove the passage instead.")
+            for flag in flags:
+                if flag.get("type") in WORDING_FLAGS:
+                    flag["resolved"] = True
+                    flag["chosen_by_user"] = source
+            if text == row["text"].strip():
+                def mutate_flags(c):
+                    c.execute("UPDATE segments SET flags_json = ? WHERE id = ?", (json.dumps(flags), segment_id))
+
+                summary = f"Keep wording at {format_clock(row['start'])}"
+                return self._record(conn, project_id, "choose_wording", summary, set(), {segment_id}, mutate_flags)
+            old_words = self._words(conn, segment_id)
+            new_text = (" " if row["text"].startswith(" ") else "") + text
+
+            def mutate(c):
+                derived = rederive_words(old_words, new_text, row["start"], row["end"])
+                c.execute("DELETE FROM words WHERE segment_id = ?", (segment_id,))
+                for ordinal, w in enumerate(derived):
+                    _insert(c, "words", {**w, "segment_id": segment_id, "ordinal": ordinal,
+                                         "speaker_id": row["speaker_id"]})
+                c.execute(
+                    "UPDATE segments SET text = ?, text_edited = ?, flags_json = ? WHERE id = ?",
+                    (new_text, int(new_text.strip() != row["original_text"].strip()), json.dumps(flags), segment_id),
+                )
+
+            label = "first-pass" if source == "first_pass" else "alternative"
+            summary = f"Use {label} wording at {format_clock(row['start'])}"
+            return self._record(conn, project_id, "choose_wording", summary, set(), {segment_id}, mutate)
+
+    def mark_reviewed(self, project_id: str, segment_ids: Iterable[int], reviewed: bool = True) -> str | None:
+        """Record that the user checked these passages (their flags no longer
+        ask for review), or undo that."""
+        ids = sorted({int(i) for i in segment_ids})
+        if not ids:
+            raise InvalidParams("No segments given.")
+        with self.db.transaction() as conn:
+            rows = [self._segment(conn, project_id, sid) for sid in ids]
+            changes = {}
+            for row in rows:
+                flags = json.loads(row["flags_json"])
+                has = any(f.get("type") == "reviewed" for f in flags)
+                if has == bool(reviewed):
+                    continue
+                flags = [f for f in flags if f.get("type") != "reviewed"]
+                if reviewed:
+                    flags.append({"type": "reviewed", "by": "user", "at": utc_now()})
+                changes[row["id"]] = flags
+            if not changes:
+                return None
+
+            def mutate(c):
+                for sid, flags in changes.items():
+                    c.execute("UPDATE segments SET flags_json = ? WHERE id = ?", (json.dumps(flags), sid))
+
+            n = len(changes)
+            what = f"{n} passage{'s' if n != 1 else ''}"
+            summary = f"Mark {what} as reviewed" if reviewed else f"Mark {what} as needing review"
+            return self._record(conn, project_id, "mark_reviewed", summary, set(), set(changes), mutate)
+
+    def apply_recheck(self, project_id: str, job_id: str, updates: dict[int, dict[str, Any]], summary: str) -> str | None:
+        """Write the result of an on-demand re-check job as one undoable edit.
+
+        ``updates`` maps segment ids to ``{"text", "start", "end", "flags",
+        "words" (None = unchanged)}``; words are dicts with the word columns."""
+        if not updates:
+            return None
+        with self.db.transaction() as conn:
+            rows = {sid: self._segment(conn, project_id, sid) for sid in updates}
+
+            def mutate(c):
+                for sid, update in updates.items():
+                    row = rows[sid]
+                    if update.get("words") is not None:
+                        c.execute("DELETE FROM words WHERE segment_id = ?", (sid,))
+                        for ordinal, w in enumerate(update["words"]):
+                            _insert(c, "words", {**w, "segment_id": sid, "ordinal": ordinal,
+                                                 "speaker_id": row["speaker_id"]})
+                    c.execute(
+                        "UPDATE segments SET text = ?, start = ?, end = ?, flags_json = ? WHERE id = ?",
+                        (update["text"], update["start"], update["end"], json.dumps(update["flags"]), sid),
+                    )
+
+            return self._record(conn, project_id, "recheck", summary, set(), set(updates), mutate, allow_job=job_id)
 
     # ------------------------------------------------------------------ history
 
@@ -312,8 +429,8 @@ class TranscriptEditor:
 
     def _record(self, conn, project_id: str, kind: str, summary: str, speakers: set[int], segments: set[int],
                 mutate: Callable, created_speakers: Callable[[], set[int]] = set,
-                created_segments: Callable[[], set[int]] = set) -> str:
-        self._ensure_editable(conn, project_id)
+                created_segments: Callable[[], set[int]] = set, allow_job: str | None = None) -> str:
+        self._ensure_editable(conn, project_id, allow_job)
         before = _capture(conn, speakers, segments)
         mutate(conn)
         new_speakers, new_segments = created_speakers(), created_segments()
@@ -332,11 +449,12 @@ class TranscriptEditor:
         return summary
 
     @staticmethod
-    def _ensure_editable(conn, project_id: str) -> None:
+    def _ensure_editable(conn, project_id: str, allow_job: str | None = None) -> None:
         if conn.execute("SELECT 1 FROM projects WHERE id = ?", (project_id,)).fetchone() is None:
             raise NotFound("Project not found.", data={"project_id": project_id})
         active = conn.execute(
-            "SELECT 1 FROM jobs WHERE project_id = ? AND status IN ('queued','running') LIMIT 1", (project_id,)
+            "SELECT 1 FROM jobs WHERE project_id = ? AND status IN ('queued','running') AND id IS NOT ? LIMIT 1",
+            (project_id, allow_job),
         ).fetchone()
         if active:
             raise InvalidJobState(

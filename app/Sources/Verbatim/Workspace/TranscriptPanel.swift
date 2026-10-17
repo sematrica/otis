@@ -14,6 +14,8 @@ struct TranscriptPanel: View {
     @State private var newSpeakerFor: [Int]?
     @State private var markingSegment: Segment?
     @State private var showingOriginal: Segment?
+    @State private var removing: Segment?
+    @EnvironmentObject private var app: AppModel
 
     var body: some View {
         VStack(spacing: 0) {
@@ -35,6 +37,14 @@ struct TranscriptPanel: View {
                       action: "Mark") { note in
                 Task { await workspace.markUncertain(segment, true, note: note.isEmpty ? nil : note) }
             }
+        }
+        .confirmationDialog("Remove this passage from the transcript?",
+                            isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }),
+                            titleVisibility: .visible, presenting: removing) { segment in
+            Button("Remove Passage", role: .destructive) { Task { await workspace.remove(segment) } }
+            Button("Cancel", role: .cancel) {}
+        } message: { segment in
+            Text("“\(segment.text.trimmingCharacters(in: .whitespaces))” — you can undo this.")
         }
         .alert("Original text", isPresented: Binding(get: { showingOriginal != nil }, set: { if !$0 { showingOriginal = nil } }),
                presenting: showingOriginal) { _ in
@@ -149,8 +159,17 @@ struct TranscriptPanel: View {
             edit: { editing = segment },
             markUncertain: { markingSegment = segment },
             clearUncertain: { Task { await workspace.markUncertain(segment, false) } },
-            showOriginal: { showingOriginal = segment }
+            showOriginal: { showingOriginal = segment },
+            recheck: canRecheck ? { Task { await workspace.recheck([segment]) } } : nil,
+            remove: { removing = segment },
+            setReviewed: { reviewed in Task { await workspace.setReviewed([segment], reviewed) } },
+            chooseWording: { source in Task { await workspace.chooseWording(segment, source: source) } }
         )
+    }
+
+    /// Re-checking needs the transcription's audio and no job in progress.
+    private var canRecheck: Bool {
+        app.latestJob(for: project.id)?.status.isActive != true
     }
 }
 

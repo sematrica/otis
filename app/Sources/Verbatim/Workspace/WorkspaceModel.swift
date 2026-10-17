@@ -88,20 +88,31 @@ final class WorkspaceModel: ObservableObject {
             guard let focusedSpeakerID else { return segments }
             return segments.filter { $0.speakerId == focusedSpeakerID }
         case .review:
-            return segments.filter { Self.needsReview($0) }
+            // most severe first, then in time order
+            return segments.filter(\.needsReview).sorted {
+                (Self.rank($0.reviewPriority), $0.start) < (Self.rank($1.reviewPriority), $1.start)
+            }
         }
     }
 
-    static let reviewFlags: Set<String> = [
-        "speaker_uncertain", "speaker_change_uncertain", "overlapping_speech", "speaker_unassigned",
-        "alignment_failed", "marked_uncertain",
-    ]
+    /// The engine sets each segment's review priority from its flags
+    /// (verify/review.py), so the app and the engine always agree.
+    static func needsReview(_ segment: Segment) -> Bool { segment.needsReview }
 
-    static func needsReview(_ segment: Segment) -> Bool {
-        !reviewFlags.isDisjoint(with: segment.flagTypes)
+    private static func rank(_ priority: String?) -> Int {
+        switch priority {
+        case "high": return 0
+        case "medium": return 1
+        default: return 2
+        }
     }
 
-    var reviewCount: Int { segments.filter(Self.needsReview).count }
+    var reviewCount: Int { segments.filter(\.needsReview).count }
+
+    /// A re-check job of this project is queued or running.
+    var isRechecking: Bool {
+        app.jobs.values.contains { $0.projectId == projectID && $0.kind == "recheck" && $0.status.isActive }
+    }
 
     func neighbour(of segment: Segment, offset: Int) -> Segment? {
         guard let i = segments.firstIndex(where: { $0.id == segment.id }) else { return nil }
@@ -121,6 +132,42 @@ final class WorkspaceModel: ObservableObject {
             if let summary = result.summary { lastChange = summary }
         } catch {
             app.report(error, title: failureTitle)
+        }
+    }
+
+    // MARK: Review (Stage 3)
+
+    func remove(_ segment: Segment) async {
+        let pid = projectID
+        await perform("Could not remove the passage") { try await $0.deleteSegment(projectId: pid, segmentId: segment.id) }
+    }
+
+    func chooseWording(_ segment: Segment, source: String) async {
+        let pid = projectID
+        await perform("Could not change the wording") {
+            try await $0.chooseWording(projectId: pid, segmentId: segment.id, source: source)
+        }
+    }
+
+    func setReviewed(_ segments: [Segment], _ reviewed: Bool) async {
+        let pid = projectID
+        let ids = segments.map(\.id)
+        guard !ids.isEmpty else { return }
+        await perform("Could not update the review state") {
+            try await $0.markReviewed(projectId: pid, segmentIds: ids, reviewed: reviewed)
+        }
+    }
+
+    /// Re-transcribe passages and let the audio decide their wording. Runs as a
+    /// job; the transcript reloads when it completes (one undoable change).
+    func recheck(_ segments: [Segment]) async {
+        let ids = segments.map(\.id)
+        guard !ids.isEmpty else { return }
+        do {
+            _ = try await client.recheck(projectId: projectID, segmentIds: ids)
+            lastChange = "Re-checking \(ids.count) passage\(ids.count == 1 ? "" : "s")…"
+        } catch {
+            app.report(error, title: "Could not re-check")
         }
     }
 

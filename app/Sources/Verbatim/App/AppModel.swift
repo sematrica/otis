@@ -67,6 +67,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var transcriptRevision: [String: Int] = [:]
     /// Latest transcript revision announced by the engine (after corrections).
     @Published private(set) var knownTranscriptRevision: [String: Int] = [:]
+    /// AI review runs by id, as the engine reports their progress.
+    @Published private(set) var llmRuns: [Int: LLMRun] = [:]
 
     let client = EngineClient()
     private var notificationTask: Task<Void, Never>?
@@ -138,6 +140,8 @@ final class AppModel: ObservableObject {
         case .transcriptUpdated(let update):
             knownTranscriptRevision[update.projectId] = update.revision
             transcriptRevision[update.projectId, default: 0] += 1
+        case .llmRunUpdated(let run):
+            llmRuns[run.id] = run
         case .modelDownload(let state):
             downloads[state.modelId] = state
             if state.isFinished {
@@ -340,6 +344,11 @@ final class AppModel: ObservableObject {
     }
 
     // MARK: Errors
+
+    /// Records a review run returned by a call (later updates arrive as notifications).
+    func noteLLMRun(_ run: LLMRun) {
+        llmRuns[run.id] = run
+    }
 
     func report(_ error: Error, title: String) {
         alert = AppAlert(title: title, message: error.localizedDescription)

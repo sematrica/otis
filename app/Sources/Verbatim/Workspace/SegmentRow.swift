@@ -14,6 +14,20 @@ struct SegmentActions {
     let markUncertain: () -> Void
     let clearUncertain: () -> Void
     let showOriginal: () -> Void
+    /// Re-transcribe this passage and let the audio decide its wording.
+    let recheck: (() -> Void)?
+    let remove: () -> Void
+    let setReviewed: (Bool) -> Void
+    /// Use a wording recorded by re-checking ("first_pass" or a candidate's source).
+    let chooseWording: (String) -> Void
+}
+
+/// Below this recogniser probability a word is shown as uncertain (the same
+/// threshold the engine's quality check uses).
+let lowConfidenceProbability = 0.5
+
+extension Word {
+    var isLowConfidence: Bool { (probability ?? 1) < lowConfidenceProbability }
 }
 
 struct SegmentRow: View {
@@ -92,15 +106,20 @@ struct SegmentRow: View {
 
     // MARK: Text
 
-    /// The text, with the word being played highlighted.
+    /// The text, with the word being played highlighted and words the
+    /// recogniser was unsure of in orange.
     private var attributedText: AttributedString {
-        guard let playbackTime, let words = segment.words, !words.isEmpty else {
+        guard let words = segment.words, !words.isEmpty else {
             return AttributedString(segment.text.trimmingCharacters(in: .whitespaces))
         }
         var result = AttributedString()
         for (i, word) in words.enumerated() {
             var piece = AttributedString(i == 0 ? word.text.trimmingCharacters(in: .whitespaces) : word.text)
-            if let start = word.start, let end = word.end, playbackTime >= start, playbackTime < max(end, start + 0.05) {
+            if word.isLowConfidence {
+                piece[AttributeScopes.SwiftUIAttributes.ForegroundColorAttribute.self] = Color.orange
+            }
+            if let playbackTime, let start = word.start, let end = word.end,
+               playbackTime >= start, playbackTime < max(end, start + 0.05) {
                 piece[AttributeScopes.SwiftUIAttributes.BackgroundColorAttribute.self] = Color.accentColor.opacity(0.35)
             }
             result += piece
@@ -139,11 +158,71 @@ struct SegmentRow: View {
             Button("New Speaker…", action: actions.assignNew)
         }
         Divider()
+        let wordings = WordingChoice.all(in: segment)
+        if !wordings.isEmpty {
+            Menu("Use Wording") {
+                ForEach(wordings) { choice in
+                    Button("\(choice.label): “\(choice.text)”") { actions.chooseWording(choice.source) }
+                        .disabled(choice.text == segment.text.trimmingCharacters(in: .whitespaces))
+                }
+            }
+        }
+        if let recheck = actions.recheck {
+            Button("Re-check Passage", action: recheck)
+                .help("Decode this passage again and keep the wording the audio supports best")
+        }
+        if segment.isReviewed {
+            Button("Mark as Needing Review") { actions.setReviewed(false) }
+        } else {
+            Button("Mark as Reviewed") { actions.setReviewed(true) }
+        }
         if segment.flagTypes.contains("marked_uncertain") {
             Button("Clear Uncertain Mark", action: actions.clearUncertain)
         } else {
             Button("Mark as Uncertain…", action: actions.markUncertain)
         }
+        Divider()
+        Button("Remove Passage…", role: .destructive, action: actions.remove)
+    }
+}
+
+/// A wording of a passage recorded by re-checking.
+struct WordingChoice: Identifiable, Hashable {
+    let source: String
+    let label: String
+    let text: String
+    let score: Double?
+    var id: String { source }
+
+    static func label(for source: String) -> String {
+        switch source {
+        case "first_pass": return "First pass"
+        case "context": return "Re-decoded with context"
+        case "plain": return "Re-decoded"
+        case "vad": return "Re-decoded (speech only)"
+        default: return source
+        }
+    }
+
+    /// Distinct wordings from the segment's re-check flags, first pass first.
+    static func all(in segment: Segment) -> [WordingChoice] {
+        var out: [WordingChoice] = []
+        for type in ["retranscribed", "alternatives", "recovered_speech"] {
+            guard let flag = segment.flag(type) else { continue }
+            if let first = flag.lookup("first_pass")?.stringValue, !first.isEmpty, !out.contains(where: { $0.text == first }) {
+                out.append(WordingChoice(source: "first_pass", label: label(for: "first_pass"), text: first, score: nil))
+            }
+            if case .some(.array(let candidates)) = flag.lookup("candidates") {
+                for candidate in candidates {
+                    guard let source = candidate.lookup("source")?.stringValue,
+                          let text = candidate.lookup("text")?.stringValue, !text.isEmpty,
+                          !out.contains(where: { $0.text == text }) else { continue }
+                    out.append(WordingChoice(source: source, label: label(for: source), text: text,
+                                             score: candidate.lookup("score")?.doubleValue))
+                }
+            }
+        }
+        return out
     }
 }
 
@@ -163,7 +242,8 @@ struct WordFlow: View {
                     if let start = word.start { onSeek(start) }
                 } label: {
                     Text(word.text.trimmingCharacters(in: .whitespaces))
-                        .underline(word.timingSource == "interpolated", color: .secondary)
+                        .underline(word.isLowConfidence || word.timingSource == "interpolated", pattern: .dot,
+                                   color: word.isLowConfidence ? .orange : .secondary)
                         .padding(.horizontal, 2)
                         .background(isPlaying(word) ? Color.accentColor.opacity(0.35) : Color.clear,
                                     in: RoundedRectangle(cornerRadius: 3))
@@ -188,7 +268,8 @@ struct WordFlow: View {
     }
 
     private func help(for word: Word) -> String {
-        guard let start = word.start else { return "No timing" }
+        let confidence = word.probability.map { " · recogniser confidence \(Int(($0 * 100).rounded())) %" } ?? ""
+        guard let start = word.start else { return "No timing" + confidence }
         let source: String
         switch word.timingSource {
         case "alignment": source = "aligned to the audio"
@@ -196,7 +277,7 @@ struct WordFlow: View {
         case "interpolated": source = "estimated (edited word)"
         default: source = "Whisper's estimate"
         }
-        return String(format: "%.2f s — %@", start, source)
+        return String(format: "%.2f s — %@", start, source) + confidence
     }
 }
 
@@ -242,6 +323,11 @@ struct FlagStrip: View {
             let note = flag.lookup("note")?.stringValue
             out.append(Item(symbol: "flag.fill", label: "Marked uncertain",
                             detail: note.map { "Marked by you: \($0)" } ?? "Marked by you as uncertain.", color: .orange))
+        }
+        out += qualityItems
+        if segment.isReviewed {
+            out.append(Item(symbol: "checkmark.circle", label: "Reviewed",
+                            detail: "You marked this passage as checked.", color: .green))
         }
         if let flag = segment.flag("overlapping_speech") {
             var others: [JSONValue]? = nil
@@ -290,6 +376,91 @@ struct FlagStrip: View {
             let text = segment.flag("boundary_duplicate_removed")?.lookup("text")?.stringValue ?? ""
             out.append(Item(symbol: "scissors", label: "Joined",
                             detail: "A repeated passage at a processing-chunk boundary was removed: “\(text)”.", color: .secondary))
+        }
+        return out
+    }
+
+    private func strings(_ value: JSONValue?) -> [String] {
+        if case .some(.array(let values)) = value { return values.compactMap(\.stringValue) }
+        return []
+    }
+
+    private static let hallucinationReasons = [
+        "no_speech_detected": "no speech was detected under these words",
+        "text_not_in_audio": "the acoustic model could not find these words in the audio",
+        "repetition_loop": "the recogniser repeated itself",
+        "high_no_speech_probability": "the recogniser itself judged this likely to be silence",
+        "known_phrase": "it is a phrase Whisper often produces on silence or music",
+        "no_acoustic_support": "re-checking found the audio better explained by no speech than by these words",
+    ]
+    private static let unclearReasons = [
+        "low_average_probability": "the recogniser's probability is low",
+        "many_uncertain_words": "many words are uncertain",
+        "decoder_fallback": "the recogniser had to retry with sampling",
+    ]
+
+    /// Stage 3: quality checks and re-checking.
+    private var qualityItems: [Item] {
+        var out: [Item] = []
+        if let flag = segment.flag("possible_hallucination") {
+            let reasons = strings(flag.lookup("reasons")).map { Self.hallucinationReasons[$0] ?? $0 }
+            let high = flag.lookup("severity")?.stringValue == "high"
+            out.append(Item(symbol: "exclamationmark.bubble", label: "Possible hallucination",
+                            detail: "These words may not have been spoken: \(reasons.joined(separator: "; ")). "
+                                + "Listen before keeping them; Remove Passage deletes them (undoable).",
+                            color: high ? .red : .orange))
+        }
+        if let flag = segment.flag("low_confidence") {
+            let reasons = strings(flag.lookup("reasons")).map { Self.unclearReasons[$0] ?? $0 }
+            var detail = "Unclear speech: \(reasons.joined(separator: "; "))."
+            if flag.lookup("confirmed_acoustically") == .bool(true) {
+                detail += " Re-checking compared other wordings and the audio supports this one."
+            }
+            out.append(Item(symbol: "waveform.badge.exclamationmark", label: "Unclear", detail: detail,
+                            color: flag.lookup("severity")?.stringValue == "low" ? .secondary : .orange))
+        }
+        if let flag = segment.flag("retranscribed") {
+            let first = flag.lookup("first_pass")?.stringValue ?? ""
+            out.append(Item(symbol: "arrow.triangle.2.circlepath", label: "Re-worded",
+                            detail: "Re-checking replaced the first-pass wording “\(first)” because the audio clearly "
+                                + "supports the new one. Use Wording › First pass to restore it.", color: .blue))
+        }
+        if let flag = segment.flag("recovered_speech"), flag.lookup("resolved") != .bool(true) {
+            out.append(Item(symbol: "plus.bubble", label: "Recovered",
+                            detail: "The first pass had no words here; re-checking found these, supported by the audio.",
+                            color: .blue))
+        }
+        if let flag = segment.flag("alternatives"), flag.lookup("resolved") != .bool(true) {
+            let texts = WordingChoice.all(in: segment).filter { $0.source != "first_pass" }.map { "“\($0.text)”" }
+            let why = flag.lookup("reason")?.stringValue.map { " (\($0))" } ?? ""
+            out.append(Item(symbol: "text.badge.plus", label: "Alternatives",
+                            detail: "Other wordings the audio supports about as well\(why): \(texts.joined(separator: ", ")). "
+                                + "Choose one with Use Wording, or keep this one.", color: .orange))
+        }
+        if let flag = segment.flag("missing_speech") {
+            let start = flag.lookup("start")?.doubleValue ?? segment.end
+            let end = flag.lookup("end")?.doubleValue ?? start
+            out.append(Item(symbol: "ear.trianglebadge.exclamationmark", label: "Untranscribed speech",
+                            detail: "Speech was detected from \(Timecode.clock(start)) to \(Timecode.clock(end)) but no words "
+                                + "were transcribed there.", color: .orange))
+        }
+        if let flag = segment.flag("repeated_words") {
+            var repeats: [String] = []
+            if case .some(.array(let values)) = flag.lookup("repeats") {
+                repeats = values.compactMap { $0.lookup("text")?.stringValue }
+            }
+            out.append(Item(symbol: "repeat", label: "Repeated words",
+                            detail: "Repeated: \(repeats.map { "“\($0)”" }.joined(separator: ", ")). Often genuine in speech.",
+                            color: .secondary))
+        }
+        if let flag = segment.flag("possible_duplicate") {
+            let text = flag.lookup("text")?.stringValue ?? ""
+            out.append(Item(symbol: "doc.on.doc", label: "Possible duplicate",
+                            detail: "“\(text)” also ends the previous passage; check that it was said twice.", color: .orange))
+        }
+        if segment.flag("timing_inconsistent") != nil {
+            out.append(Item(symbol: "clock.arrow.circlepath", label: "Word order",
+                            detail: "Some word times are out of order here.", color: .orange))
         }
         return out
     }
