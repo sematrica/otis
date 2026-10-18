@@ -25,6 +25,8 @@ do not depend on the recogniser's output.
 
 from __future__ import annotations
 
+import math
+
 import logging
 import re
 from dataclasses import dataclass
@@ -231,11 +233,16 @@ def analyse(segments: list[TSegment], speech: SpeechMap | None, *, missing: bool
     for seg in segments:
         tokens = [normalize_token(w.text) for w in seg.words] if seg.words else [
             normalize_token(t) for t in seg.text.split()]
-        probabilities = [w.probability for w in seg.words if w.probability is not None]
+        # a probability that is not a number (the MLX decoder can return NaN in
+        # repetition loops) says nothing: never counted as certain
+        probabilities = [w.probability for w in seg.words if w.probability is not None and math.isfinite(w.probability)]
+        logprob = seg.avg_logprob
 
         # unclear speech
         reasons = []
-        if seg.avg_logprob is not None and seg.avg_logprob < LOW_AVG_LOGPROB:
+        if logprob is not None and math.isnan(logprob):
+            reasons.append("probability_unavailable")
+        elif logprob is not None and logprob < LOW_AVG_LOGPROB:
             reasons.append("low_average_probability")
         uncertain = sum(1 for p in probabilities if p < LOW_WORD_PROBABILITY)
         if probabilities and uncertain >= UNCERTAIN_WORD_MIN and uncertain / len(probabilities) >= UNCERTAIN_WORD_SHARE:
@@ -243,10 +250,10 @@ def analyse(segments: list[TSegment], speech: SpeechMap | None, *, missing: bool
         if seg.temperature is not None and seg.temperature > 0:
             reasons.append("decoder_fallback")
         if reasons:
-            severe = (seg.avg_logprob is not None and seg.avg_logprob < LOW_AVG_LOGPROB - 0.3) or (
+            severe = (logprob is not None and logprob < LOW_AVG_LOGPROB - 0.3) or (
                 probabilities and uncertain / len(probabilities) >= 0.5)
             add(seg, {"type": "low_confidence", "severity": "high" if severe else "medium", "reasons": reasons,
-                      "avg_logprob": None if seg.avg_logprob is None else round(seg.avg_logprob, 3),
+                      "avg_logprob": round(logprob, 3) if logprob is not None and math.isfinite(logprob) else None,
                       "uncertain_words": uncertain, "words": len(probabilities)})
 
         # possible hallucination

@@ -199,6 +199,8 @@ def test_values_that_are_not_json_never_make_a_reply_unreadable(engine, data_dir
                    flags=flags)
     db = Database(data_dir / "verbatim.sqlite3")
     repo.replace_transcript(db, project["id"], None, [odd], "en", [])
+    stored = db.query_one("SELECT flags_json FROM segments WHERE project_id = ?", (project["id"],))["flags_json"]
+    assert "NaN" not in stored and "Infinity" not in stored  # stored as null
     db.close()
     transcript = engine.result("transcript.get", {"project_id": project["id"], "include_words": True})
     segment = transcript["segments"][0]

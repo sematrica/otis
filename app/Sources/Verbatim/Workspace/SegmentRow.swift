@@ -438,6 +438,7 @@ struct FlagStrip: View {
         "low_average_probability": "the recogniser's probability is low",
         "many_uncertain_words": "many words are uncertain",
         "decoder_fallback": "the recogniser had to retry with sampling",
+        "probability_unavailable": "the recogniser could not say how sure it was",
     ]
 
     /// Stage 3: quality checks and re-checking.

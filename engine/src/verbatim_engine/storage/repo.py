@@ -7,6 +7,7 @@ Functions return plain dicts shaped for the RPC protocol
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any, Iterable
 
 from ..audio.chunking import Chunk
@@ -14,8 +15,11 @@ from ..errors import InvalidJobState, NotFound
 from ..media.probe import MediaInfo
 from ..transcript.model import TSegment
 from ..verify.review import review_priority
+from ..util import jsonsafe
 from ..util.ids import new_id, parse_utc, utc_now
 from .db import Database
+
+log = logging.getLogger(__name__)
 
 PROJECT_STATUSES = ("new", "queued", "processing", "ready", "failed", "cancelled", "interrupted")
 ACTIVE_JOB_STATUSES = ("queued", "running")
@@ -53,6 +57,15 @@ _ETA_MIN_SECONDS = 10.0
 
 # --------------------------------------------------------------------------- projects
 
+
+
+def _stored_json(value: Any, what: str) -> str:
+    """JSON for a stored result; a number that is not finite is stored as null (and logged)."""
+    replaced: list[str] = []
+    text = jsonsafe.dumps(value, found=replaced)
+    if replaced:
+        log.warning("%s: stored null for values that are not numbers at %s", what, ", ".join(replaced[:10]))
+    return text
 
 def _project_row_to_dict(row, segment_count: int | None = None) -> dict[str, Any]:
     return {
@@ -444,7 +457,7 @@ def requeue_job(db: Database, job_id: str, *, front: bool = False) -> None:
 
 
 def set_effective(db: Database, job_id: str, effective: dict[str, Any]) -> None:
-    db.execute("UPDATE jobs SET effective_json = ?, updated_at = ? WHERE id = ?", (json.dumps(effective), utc_now(), job_id))
+    db.execute("UPDATE jobs SET effective_json = ?, updated_at = ? WHERE id = ?", (_stored_json(effective, f"job {job_id} effective"), utc_now(), job_id))
 
 
 # --------------------------------------------------------------------------- stages
@@ -599,7 +612,7 @@ def replace_transcript(db: Database, project_id: str, job_id: str, segments: lis
                 (
                     project_id, job_id, ordinal, seg.start, seg.end, seg.text, seg.text, seg.language,
                     seg.avg_logprob, seg.no_speech_prob, seg.compression_ratio, seg.temperature, seg.chunk_index,
-                    speaker_id, speaker_id, seg.speaker_confidence, json.dumps(flags),
+                    speaker_id, speaker_id, seg.speaker_confidence, _stored_json(flags, "segment flags"),
                 ),
             )
             segment_id = cur.lastrowid
@@ -625,7 +638,7 @@ def replace_transcript(db: Database, project_id: str, job_id: str, segments: lis
             """INSERT INTO original_transcripts (project_id, job_id, created_at, content_json) VALUES (?, ?, ?, ?)
                ON CONFLICT(project_id) DO UPDATE SET job_id = excluded.job_id, created_at = excluded.created_at,
                    content_json = excluded.content_json""",
-            (project_id, job_id, now, json.dumps({"language": language, **snapshot})),
+            (project_id, job_id, now, _stored_json({"language": language, **snapshot}, "original transcript")),
         )
     return len(segments)
 

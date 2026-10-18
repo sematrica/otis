@@ -243,7 +243,7 @@ Flags record every automatic decision and every doubt:
 | `speaker_unassigned` | diarization found no speech near the words |
 | `alignment_failed` | forced alignment was rejected; recogniser timings kept (`reason`, `score`) |
 | `marked_uncertain` | marked by the user (`note`); high |
-| `low_confidence` | unclear speech (`reasons`: low_average_probability, many_uncertain_words, decoder_fallback; `avg_logprob`, `uncertain_words` of `words`); `confirmed_acoustically` when re-checking found the audio clearly supports the wording |
+| `low_confidence` | unclear speech (`reasons`: low_average_probability, many_uncertain_words, decoder_fallback, probability_unavailable (the recogniser's average log-probability is not a number; seen with MLX in repetition loops); `avg_logprob`, `uncertain_words` of `words`); `confirmed_acoustically` when re-checking found the audio clearly supports the wording |
 | `possible_hallucination` | words that may not have been spoken (`reasons`: no_speech_detected, text_not_in_audio, repetition_loop, high_no_speech_probability, known_phrase (`phrase`), no_acoustic_support (`acoustic_margin`); `speech_coverage`). Words are never removed automatically |
 | `repeated_words` | immediate repetitions (`repeats[{text, count, loop}]`); low (often genuine) |
 | `missing_speech` | detected speech no word covers, on the segment before it (`start`, `end`, `detectors`: vad, diarization) |

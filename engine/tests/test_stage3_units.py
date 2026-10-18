@@ -214,6 +214,22 @@ def test_unclear_speech_is_flagged_with_its_reasons():
     assert flag["severity"] == "high" and review_priority(seg.flags) == "high"
 
 
+def test_a_probability_that_is_not_a_number_is_a_doubt_not_a_value():
+    # seen with the MLX decoder in repetition loops: avg_logprob NaN, some word probabilities NaN
+    seg = _seg(0.0, "the the the the".split(), avg=float("nan"), prob=0.9)
+    seg.words[0].probability = float("nan")
+    seg.words[1].probability = float("nan")
+    analyse([seg], _speech(3.0, (0.0, 3.0)))
+    flag = next(f for f in seg.flags if f["type"] == "low_confidence")
+    assert flag["reasons"] == ["probability_unavailable"] and flag["avg_logprob"] is None
+    assert flag["words"] == 2 and flag["uncertain_words"] == 0  # the NaN words are not counted as certain
+    assert flag["severity"] == "medium"
+    low = _seg(5.0, "something unclear".split(), avg=float("-inf"))
+    analyse([low], _speech(8.0, (5.0, 6.0)))
+    flag = next(f for f in low.flags if f["type"] == "low_confidence")
+    assert flag["reasons"] == ["low_average_probability"] and flag["avg_logprob"] is None and flag["severity"] == "high"
+
+
 def test_loops_and_disfluencies():
     loop = _seg(0.0, "and then and then and then and then".split())
     stutter = _seg(5.0, "i i think so".split())
